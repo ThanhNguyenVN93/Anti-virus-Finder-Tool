@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 namespace frmavfinnder
 {
     public partial class Form2 : Form
@@ -72,6 +73,30 @@ namespace frmavfinnder
         }
 
         // ────────────────────────────────────────────────────
+        //  ĐĂNG KÝ TỰ CHẠY LẠI SAU KHI REBOOT VÀO SAFE MODE
+        // ────────────────────────────────────────────────────
+        private void RegisterSafeModeAutoRelaunch()
+        {
+            try
+            {
+                // Tiền tố "*" là yêu cầu bắt buộc của Windows để RunOnce/Run
+                // được thực thi ngay cả khi máy boot vào Safe Mode.
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", writable: true))
+                {
+                    key?.SetValue("*AntiVirusFinderSafeModeResume",
+                        $"\"{Application.ExecutablePath}\"");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Không thể đăng ký tự khởi động lại trong Safe Mode: {ex.Message}\n\nSau khi khởi động lại, vui lòng tự mở lại ứng dụng.",
+                    "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        // ────────────────────────────────────────────────────
         //  BOOT VÀO SAFE MODE MINIMAL
         // ────────────────────────────────────────────────────
         private void BootIntoSafeMode()
@@ -122,6 +147,12 @@ namespace frmavfinnder
                         "bcdedit Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
+
+                // Đăng ký app tự chạy lại sau khi reboot vào Safe Mode.
+                // Registry Run/RunOnce bình thường KHÔNG được Windows thực thi trong
+                // Safe Mode — chỉ chạy nếu tên value có tiền tố "*" (hành vi được
+                // Windows tài liệu hoá riêng cho trường hợp Safe Mode).
+                RegisterSafeModeAutoRelaunch();
 
                 // Bước 2: bcdedit đã ghi xong → restart ngay
                 lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
