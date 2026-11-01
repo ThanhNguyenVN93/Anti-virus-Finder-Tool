@@ -1,14 +1,9 @@
-﻿using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.ComponentModel;
-using System.Data;
-using System.Drawing;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Management;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -16,285 +11,482 @@ namespace frmavfinnder
 {
     public partial class Form1 : Form
     {
+        // ── Fix #3, #4: Fields dùng chung giữa các method ──
+        private WebClient _webClient;
+        private string _lastSavePath;
+
+        // ── Fix #7: Đo tốc độ download thực tế ──
+        private readonly Stopwatch _downloadStopwatch = new Stopwatch();
+        private long _lastBytesReceived = 0;
+
+        // ── Auto download flag ──
+        private bool _autoDownloadTriggered = false;
+
+        // ── Detected AV name ──
+        private string _detectedAvName = "";
+
         public Form1()
         {
             InitializeComponent();
         }
 
+        // ────────────────────────────────────────────────────
+        //  TIMER – cập nhật tiêu đề cửa sổ theo giờ thực
+        // ────────────────────────────────────────────────────
         private void timer1_Tick(object sender, EventArgs e)
         {
-            // Lấy thời gian hiện tại và định dạng nó
-            string currentTime = DateTime.Now.ToString("HH:mm:ss");
-
-            // Cập nhật thuộc tính Text của Form
-            this.Text = $"ANTI-VIRUS FINDER TOOL V1.1 - {currentTime}";
+            this.Text = $"ANTI-VIRUS FINDER TOOL V1.1 - {DateTime.Now:HH:mm:ss}";
         }
 
+        // ────────────────────────────────────────────────────
+        //  FORM LOAD
+        // ────────────────────────────────────────────────────
         private void Form1_Load(object sender, EventArgs e)
         {
-            //OS Detect:
+            // Fix #6: lblavstatus bị đặt Visible = false trong Designer → bật lại ở đây
+            lblavstatus.Visible = true;
+            lblavstatus.Text = "";
 
-            string r = "";
-            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_OperatingSystem"))
+            // ── SAFE MODE CHECK ──
+            // Nếu đang ở Safe Mode (sau khi reboot từ Form2),
+            // nhảy thẳng vào Form2 để chạy uninstaller hoặc boot về Normal.
+            if (SystemInformation.BootMode != BootMode.Normal)
             {
-                ManagementObjectCollection information = searcher.Get();
-                if (information != null)
+                string uninstallerPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Downloads", "uninstaller.exe");
+
+                if (File.Exists(uninstallerPath))
                 {
-                    foreach (ManagementObject obj in information)
-                    {
-                        r = obj["Caption"].ToString() + " - " + obj["OSArchitecture"].ToString();
-                    }
+                    LaunchForm2(uninstallerPath);
+                    return;  // Không chạy tiếp phần dưới
                 }
-                r = r.Replace("NT 5.1.2600", "XP");
-                r = r.Replace("NT 5.2.3790", "Server 2003");
-                lblos.Text = r;
             }
 
-            btnavcheck.PerformClick();
+            // Phát hiện hệ điều hành qua WMI
+            string r = "";
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                "SELECT * FROM Win32_OperatingSystem"))
+            {
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    using (obj)
+                    {
+                        r = obj["Caption"] + " - " + obj["OSArchitecture"];
+                    }
+                }
+            }
+            r = r.Replace("NT 5.1.2600", "XP").Replace("NT 5.2.3790", "Server 2003");
+            lblos.Text = r;
 
+            // Populate AV Support List
+            PopulateAvSupportList();
+
+            btnavcheck.PerformClick();
         }
+
+        // ────────────────────────────────────────────────────
+        //  POPULATE AV SUPPORT LIST
+        // ────────────────────────────────────────────────────
+        private void PopulateAvSupportList()
+        {
+            lbAvSupport.Items.Clear();
+            lbAvSupport.Items.Add("✓ Kaspersky");
+            lbAvSupport.Items.Add("✓ Avast");
+            lbAvSupport.Items.Add("✓ AVG");
+            lbAvSupport.Items.Add("✓ Avira");
+            lbAvSupport.Items.Add("✓ Bitdefender");
+            lbAvSupport.Items.Add("✓ ESET (Safe Mode)");
+            lbAvSupport.Items.Add("✓ McAfee");
+            lbAvSupport.Items.Add("✓ Norton");
+            lbAvSupport.Items.Add("✓ Trend Micro");
+        }
+
+        // ────────────────────────────────────────────────────
+        //  PHÁT HIỆN ANTIVIRUS (chạy trên background thread)
+        // ────────────────────────────────────────────────────
         private string DetectAntivirus()
         {
             try
             {
-                // Thiết lập truy vấn WMI trên ROOT\SecurityCenter2
-                ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                // SecurityCenter2 thường giữ lại entry "rác" của các bản AV cũ sau khi
+                // update/gỡ cài đặt (WMI không tự dọn). Gom hết ứng viên hợp lệ rồi mới
+                // chọn, ưu tiên entry có file cài đặt còn tồn tại trên đĩa.
+                string fallbackName = null;
+
+                // Fix #5: Bọc ManagementObjectSearcher trong using tránh memory leak
+                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
                     @"ROOT\SecurityCenter2",
-                    "SELECT * FROM AntivirusProduct"
-                );
-
-                foreach (ManagementObject managementObject in searcher.Get())
+                    "SELECT * FROM AntivirusProduct"))
                 {
-                    string displayName = managementObject["displayName"]?.ToString();
-
-                    // Kiểm tra và loại trừ Windows Defender.
-                    // Defender thường được gọi là "Windows Defender Antivirus" hoặc tên tương tự.
-                    if (!string.IsNullOrEmpty(displayName) && !displayName.ToLower().Contains("windows defender"))
+                    foreach (ManagementObject mo in searcher.Get())
                     {
-                        // Trả về tên phần mềm AV đầu tiên tìm thấy
-                        return displayName;
+                        // Fix #5: Bọc từng ManagementObject trong using
+                        using (mo)
+                        {
+                            string displayName = mo["displayName"]?.ToString();
+                            if (string.IsNullOrEmpty(displayName) ||
+                                displayName.ToLower().Contains("windows defender"))
+                            {
+                                continue;
+                            }
+
+                            string productExePath = mo["pathToSignedProductExe"]?.ToString();
+
+                            // Entry có file thực sự tồn tại → đây mới là bản AV đang cài,
+                            // nhận ngay thay vì chờ duyệt hết danh sách.
+                            if (!string.IsNullOrEmpty(productExePath) && File.Exists(productExePath))
+                            {
+                                return displayName;
+                            }
+
+                            // Không xác minh được file (entry rác hoặc thiếu path) →
+                            // giữ lại làm phương án dự phòng nếu không tìm được entry nào tốt hơn.
+                            if (fallbackName == null)
+                            {
+                                fallbackName = displayName;
+                            }
+                        }
                     }
                 }
+
+                return fallbackName;
             }
             catch (Exception ex)
             {
-                // Xử lý lỗi nếu có vấn đề khi truy vấn WMI
-                MessageBox.Show($"Antivirus Detection Error: {ex.Message}", "WMI ERRORS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Fix #8: MessageBox phải chạy trên UI thread
+                this.Invoke(new Action(() =>
+                {
+                    MessageBox.Show(
+                        $"Antivirus Detection Error: {ex.Message}",
+                        "WMI ERRORS",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }));
             }
-            return null; // Không tìm thấy Antivirus nào khác Defender
+            return null;
         }
 
-        /// <summary>
-        /// Sự kiện Click cho nút "ANTI-VIRUS CHECK"
-        /// </summary>
+        // ────────────────────────────────────────────────────
+        //  PHÁT HIỆN PHIÊN BẢN WINDOWS
+        // ────────────────────────────────────────────────────
+        private bool IsWindows7()
+        {
+            try
+            {
+                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                    "SELECT * FROM Win32_OperatingSystem"))
+                {
+                    foreach (ManagementObject obj in searcher.Get())
+                    {
+                        using (obj)
+                        {
+                            string version = obj["Version"]?.ToString() ?? "";
+                            // Windows 7 có version 6.1.x
+                            return version.StartsWith("6.1");
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Nếu lỗi, coi như không phải Windows 7
+            }
+            return false;
+        }
 
+        // ────────────────────────────────────────────────────
+        //  NÚT ANTI-VIRUS CHECK
+        // ────────────────────────────────────────────────────
         private async void btnavcheck_Click_1(object sender, EventArgs e)
         {
-            // 1. Chuẩn bị UI
+            // Chuẩn bị UI
+            lblavstatus.ForeColor = System.Drawing.Color.FromArgb(0, 120, 215);
             lblavstatus.Text = "Scanning...";
             txtfoundav.Text = "";
             txtDirectory.Text = "";
-            btnavcheck.Enabled = false; // Vô hiệu hóa nút download
-            
+            btnavcheck.Enabled = false;
 
-            // 2. Thực hiện quét trong một luồng nền (Task.Run) để UI không bị đơ
+            // Fix #9: Disable nút download trong khi quét
+            btndownload.Enabled = false;
+
+            // Quét trong background thread để UI không bị đơ
             string detectedAvName = await Task.Run(() => DetectAntivirus());
 
-            // 3. Cập nhật giao diện
             if (!string.IsNullOrEmpty(detectedAvName))
             {
+                _detectedAvName = detectedAvName;  // Lưu tên AV
+                lblavstatus.ForeColor = System.Drawing.Color.FromArgb(200, 120, 0);
                 lblavstatus.Text = "Found:";
                 txtfoundav.Text = detectedAvName;
 
-                // --- GỌI PHƯƠNG THỨC LẤY ĐƯỜNG DẪN CÀI ĐẶT ---
-                string installPath = GetDownloadLink(detectedAvName);
-                txtDirectory.Text = installPath;
-                // ---------------------------------------------
+                string link = GetDownloadLink(detectedAvName);
+                string n = detectedAvName.ToLower();
+                txtDirectory.Text = link;
 
-                // Nếu bạn muốn nút download tải về file trong thư mục cài đặt (ví dụ: file log/setup),
-                // bạn sẽ cần logic phức tạp hơn. Nếu mục đích là hiển thị đường dẫn, thì không cần kích hoạt.
-                // Nếu mục đích là TẢI VỀ LINK KHÁC, ta sẽ làm ở bước sau.
-                // Vô hiệu hóa vì đây là đường dẫn Local
+                // Fix #9: Chỉ bật nút download nếu link là URL hợp lệ tuyệt đối
+                btndownload.Enabled = Uri.TryCreate(link, UriKind.Absolute, out _);
+
+                // Auto download nếu phát hiện antivirus và đây là lần đầu
+                if (!_autoDownloadTriggered && btndownload.Enabled)
+                {
+                    _autoDownloadTriggered = true;
+
+                    // Nếu là ESET, kiểm tra xem file đã tồn tại chưa
+                    if (n.Contains("eset"))
+                    {
+                        string existingFile = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                            "Downloads", "uninstaller.exe");
+
+                        if (File.Exists(existingFile))
+                        {
+                            // File đã tồn tại → bỏ qua download, mở Form2 luôn
+                            LaunchForm2(existingFile);
+                            return;
+                        }
+                    }
+
+                    btnavcheck.Enabled = false;  // Disable nút check khi bắt đầu download
+
+                    // Tự động click nút download sau 1 giây
+                    await Task.Delay(1000);
+                    btndownload_Click(btndownload, EventArgs.Empty);
+                }
+                else
+                {
+                    // Nếu không tự động download thì bật lại nút check
+                    btnavcheck.Enabled = true;
+                }
             }
             else
             {
-                lblavstatus.Text = "Not Found:";
-                txtfoundav.Text = "No AV found (except Windows Defender)";
-                txtDirectory.Text = "No download link available";
+                // Không tìm thấy AV bên thứ ba
+                // → phân biệt theo phiên bản Windows
+                bool isWin7 = await Task.Run(() => IsWindows7());
+
+                if (isWin7)
+                {
+                    // Windows 7 không có Defender mạnh → khuyến cáo
+                    lblavstatus.ForeColor = System.Drawing.Color.FromArgb(200, 0, 0);
+                    lblavstatus.Text = "⚠️ Not Protected:";
+                    txtfoundav.Text = "Windows 7 - No antivirus found";
+                    txtDirectory.Text = "Recommend: Use a lightweight AV (Avast/AVG) or update to Windows 10";
+                }
+                else
+                {
+                    // Windows 10+ luôn có Windows Defender tích hợp
+                    lblavstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
+                    lblavstatus.Text = "Protected:";
+                    txtfoundav.Text = "Windows Defender is active";
+                    txtDirectory.Text = "System is protected by Windows Defender";
+                }
+
+                btndownload.Enabled = false;
+                btnavcheck.Enabled = true;
             }
         }
+
+        // ────────────────────────────────────────────────────
+        //  MỞ FORM2 VÀ ẨN FORM1
+        // ────────────────────────────────────────────────────
+        private void LaunchForm2(string uninstallerPath)
+        {
+            Form2 safeModeFrm = new Form2(uninstallerPath);
+            safeModeFrm.FormClosed += (s, args) => Application.Exit();
+            safeModeFrm.Show();
+
+            // Ẩn Form1 thay vì Close — vì Form1 là main form,
+            // Close sẽ kết thúc Application.Run() và giết Form2.
+            this.Hide();
+        }
+
+        // ────────────────────────────────────────────────────
+        //  LẤY LINK DOWNLOAD THEO TÊN AV
+        // ────────────────────────────────────────────────────
         private string GetDownloadLink(string avName)
         {
-            string lowerName = avName.ToLower();
+            string n = avName.ToLower();
 
-            // Dùng logic so khớp tên AV để gán link tải xuống chính thức (hoặc file setup)
-            if (lowerName.Contains("kaspersky"))
-            {
+            if (n.Contains("kaspersky"))
                 return "https://media.kaspersky.com/utilities/ConsumerUtilities/kavremvr.exe";
-            }
-            else if (lowerName.Contains("avast"))
-            {
-                return "https://honzik.avcdn.net/setup/avast-av/release/avast_av_clear.exe"; // Avast Free Installer
-            }
-            else if (lowerName.Contains("avg"))
-            {
-                return "https://honzik.avcdn.net/setup/avg-av/release/avg_av_clear.exe?alt=en-ww"; // AVG Free Installer
-            }
-            else if (lowerName.Contains("avira"))
-            {
-                return "https://support.avira.com/hc/en-us/article_attachments/360001695365"; // Avira Download Page
-            }
-            else if (lowerName.Contains("bitdefender"))
-            {
-                return "https://www.bitdefender.com/files/KnowledgeBase/file/Bitdefender_2023_Uninstall_Tool.exe"; // Bitdefender Installer
-            }
-            else if (lowerName.Contains("eset"))
-            {
-                return "https://download.eset.com/com/eset/tools/installers/eset_apps_remover/latest/uninstaller.exe"; // F-Secure Total Download Page
-            }
-            else if (lowerName.Contains("mcafee"))
-            {
-                return "https://download.mcafee.com/molbin/iss-loc/SupportTools/MCPR/MCPR.exe"; // McAfee Removal Tool
-            }
-            else if (lowerName.Contains("norton"))
-            {
-                return "https://www.norton.com/nortonremover"; // Norton Download Page
-            }          
-            else if (lowerName.Contains("trend micro"))
-            {
-                return "https://powerbox-na-file.trend.org/SFDC/DownloadFile_iv.php?jsonInfo=%7B%22Query%22%3A%22HM9DpY%2Fqw0CR4CE2CPUsYVe4ZBGL%2F5dTa4lZsV%2FxJ%2FX4pXowzWPPJfBfU%2FDsO64CygtCgbmvxbwRFchkCmeXU8%2BcRw14PVtHFTgO9oafcrgwNtry%2FmkqkLOcaS4YUbXl6QG4R3QF%2Fw%2Faxt0rJJIS2cvQIpmfWG30k9V2qHuCl9vza23y4EGwYcuSYShNd3K8XhkG0shYf5vxq1QlRCQR9NxiN6DmcIG3v8O4%2BOQlUv497axB1wrKrVOH84UWbCLOYWrw8pqqiFh%2BWnWLfNo8NmrZz4TRHxU9AvDk8V1Q%2BpR9NKQfzRQY5cT1BvEVsddP%2FW17vzf6rzBn%2FzNvpfwRAw%3D%3D%22%2C%22iv%22%3A%221cc5c50e1fd95d078c7de084b9492912%22%7D"; // Trend Micro Download Page
-            }
+            if (n.Contains("avast"))
+                return "https://honzik.avcdn.net/setup/avast-av/release/avast_av_clear.exe";
+            if (n.Contains("avg"))
+                return "https://honzik.avcdn.net/setup/avg-av/release/avg_av_clear.exe?alt=en-ww";
+            if (n.Contains("avira"))
+                return "https://github.com/ThanhNguyenVN93/Avira-Uninstaller-Support-Tool/releases/download/avira/Avira.Spotlight.Uninstaller.Tool.exe";
+            if (n.Contains("bitdefender"))
+                return "https://www.bitdefender.com/files/KnowledgeBase/file/Bitdefender_2023_Uninstall_Tool.exe";
+            if (n.Contains("eset"))
+                return "https://download.eset.com/com/eset/tools/installers/eset_apps_remover/latest/uninstaller.exe";
+            if (n.Contains("mcafee"))
+                return "https://download.mcafee.com/molbin/iss-loc/SupportTools/MCPR/MCPR.exe";
+            if (n.Contains("norton"))
+                return "https://honzik.avcdn.net/setup/norton-suite/release/norton_360_remover.exe";
+            if (n.Contains("trend micro"))
+                return "https://github.com/ThanhNguyenVN93/Trendmicro-Uninstaller-Support-Tool/releases/download/v1.0.0/Trendmicro.Uninstaller.Support.Tool.zip";
 
-            // Bạn có thể thêm nhiều AV khác vào đây
-
-            // Link mặc định nếu không khớp hoặc AV không phổ biến
             return "Contact for feedback and support.";
         }
 
+        // ────────────────────────────────────────────────────
+        //  NÚT DOWNLOAD
+        // ────────────────────────────────────────────────────
         private void btndownload_Click(object sender, EventArgs e)
         {
             string downloadUrl = txtDirectory.Text;
 
-            // Kiểm tra tính hợp lệ của link
-            if (string.IsNullOrEmpty(downloadUrl) || !Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri uriResult))
+            if (string.IsNullOrEmpty(downloadUrl) ||
+                !Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri uriResult))
             {
-                MessageBox.Show("Invalid download link.", "ERRORS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Invalid download link.", "ERRORS",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             try
             {
-                // 1. Chuẩn bị UI và file
                 lblstatus.Text = "Starting...";
-                lblspeed.Text = "0 MB/s"; // Giả sử label tốc độ là lblSpeed
+                lblspeed.Text = "0 KB/s";
                 progressBarDownload.Value = 0;
-                btndownload.Enabled = false; // Vô hiệu hóa nút trong khi tải
+                btndownload.Enabled = false;
 
-                // 2. Thiết lập WebClient
-                WebClient webClient = new WebClient();
+                // Fix #4: Dispose WebClient cũ nếu tồn tại trước khi tạo mới
+                _webClient?.Dispose();
+                _webClient = new WebClient();
 
-                // Tạo đường dẫn lưu file (lưu vào thư mục Downloads của user)
-                // Lấy tên file từ URL (ví dụ: installer.exe)
                 string fileName = Path.GetFileName(uriResult.LocalPath);
-                // Ghép đường dẫn: [User/Downloads]/[filename]
-                string savePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", fileName);
 
-                // 3. Gắn các sự kiện theo dõi tiến trình
-                webClient.DownloadProgressChanged += WebClient_DownloadProgressChanged;
-                webClient.DownloadFileCompleted += WebClient_DownloadFileCompleted;
+                // Fix #3: Lưu đường dẫn vào field để WebClient_DownloadFileCompleted dùng lại
+                _lastSavePath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Downloads",
+                    fileName);
 
-                // Bắt đầu tải xuống bất đồng bộ
-                webClient.DownloadFileAsync(uriResult, savePath);
+                _webClient.DownloadProgressChanged += WebClient_DownloadProgressChanged;
+                _webClient.DownloadFileCompleted   += WebClient_DownloadFileCompleted;
+
+                // Fix #7: Reset Stopwatch trước khi bắt đầu tải
+                _lastBytesReceived = 0;
+                _downloadStopwatch.Restart();
+
+                _webClient.DownloadFileAsync(uriResult, _lastSavePath);
             }
             catch (Exception ex)
             {
                 lblstatus.Text = "Download Initialization Error.";
-                MessageBox.Show($"Download Error: {ex.Message}", "ERRORS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Download Error: {ex.Message}", "ERRORS",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 btndownload.Enabled = true;
             }
         }
 
-        // ----------------------------------------------------
-        // CÁC SỰ KIỆN THEO DÕI TIẾN TRÌNH
-        // ----------------------------------------------------
-
-        /// <summary>
-        /// Cập nhật tiến trình tải xuống lên ProgressBar và Label tốc độ.
-        /// </summary>
-        /// 
+        // ────────────────────────────────────────────────────
+        //  THEO DÕI TIẾN TRÌNH DOWNLOAD
+        // ────────────────────────────────────────────────────
         private void WebClient_DownloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
         {
-            // Cập nhật ProgressBar (0-100)
             progressBarDownload.Value = e.ProgressPercentage;
-
-            // Cập nhật trạng thái
             lblstatus.Text = $"Downloading... ({e.ProgressPercentage}%)";
 
-            // Cập nhật tốc độ và kích thước
-            // 1048576 bytes = 1 MB
-            double totalMB = (double)e.TotalBytesToReceive / 1048576;
-            double receivedMB = (double)e.BytesReceived / 1048576;
+            double totalMB    = (double)e.TotalBytesToReceive / 1_048_576;
+            double receivedMB = (double)e.BytesReceived        / 1_048_576;
 
-            // Tốc độ (bytes/s)
-            double speedKBps = (double)e.BytesReceived / (double)e.TotalBytesToReceive * 100 * 1024;
+            // Fix #7: Tốc độ thực = (bytes mới nhận) / (thời gian thực trôi qua)
+            double elapsedSec = _downloadStopwatch.Elapsed.TotalSeconds;
+            double speedKBps  = elapsedSec > 0
+                ? (e.BytesReceived - _lastBytesReceived) / elapsedSec / 1024.0
+                : 0;
 
-            lblspeed.Text = $"{receivedMB:N2}MB / {totalMB:N2}MB | {speedKBps:N0} KB/s";
+            _lastBytesReceived = e.BytesReceived;
+            _downloadStopwatch.Restart();
+
+            lblspeed.Text = $"{receivedMB:N2} MB / {totalMB:N2} MB  |  {speedKBps:N0} KB/s";
         }
 
-        /// <summary>
-        /// Xử lý khi quá trình tải file hoàn thành (thành công hoặc thất bại).
-        /// </summary>
-        private void WebClient_DownloadFileCompleted(object sender, AsyncCompletedEventArgs e)
+        // ────────────────────────────────────────────────────
+        //  DOWNLOAD HOÀN THÀNH
+        // ────────────────────────────────────────────────────
+        private async void WebClient_DownloadFileCompleted(object sender, AsyncCompletedEventArgs e)
         {
-            btndownload.Enabled = true; // Kích hoạt lại nút tải xuống
+            _downloadStopwatch.Stop();
+
+            // Fix #4: Dispose WebClient sau khi hoàn tất
+            _webClient?.Dispose();
+            _webClient = null;
+
+            btndownload.Enabled = true;
+            btnavcheck.Enabled = true;  // Bật lại nút check sau download
 
             if (e.Error != null)
             {
-                // Xử lý lỗi
                 lblstatus.Text = "Download Failed!";
-                MessageBox.Show($"Download Unsuccessful: {e.Error.Message}", "Download Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Download Unsuccessful: {e.Error.Message}",
+                    "Download Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             else if (e.Cancelled)
             {
-                // Xử lý trường hợp bị hủy
                 lblstatus.Text = "Download Canceled.";
             }
             else
             {
-                // Tải xuống thành công
                 lblstatus.Text = "Complete!";
-                MessageBox.Show("Download complete! The file has been saved in the Downloads folder.", "Success!!", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    "Download complete! Processing file...",
+                    "Success!!", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
                 try
                 {
-                    // Lấy lại đường dẫn file đã được lưu
-                    // Ta sẽ sử dụng đường dẫn đã tạo trong btnDownload_Click để đảm bảo
-                    // *Ta cần chỉnh sửa lại để lưu đường dẫn này vào một biến có thể truy cập được ở đây.*
-
-                    // Giả định bạn đã sửa code và có thể lấy được đường dẫn lưu đầy đủ (bao gồm tên file)
-                    // Ví dụ: string filePath = _lastDownloadedFilePath;
-
-                    // Dùng logic lấy lại đường dẫn savePath từ biến toàn cục/hằng số
-                    string filePath = "C:\\Users\\YourUser\\Downloads\\" + Path.GetFileName(new Uri(txtDirectory.Text).LocalPath);
-
-                    // ----------------------------------------------------
-                    // Mở thư mục Downloads VÀ CHỌN FILE ĐÃ TẢI
-                    // ----------------------------------------------------
-
-                    if (File.Exists(filePath))
+                    // Nếu là ESET → chạy Form2 (Safe Mode Uninstaller)
+                    if (!string.IsNullOrEmpty(_detectedAvName) && 
+                        _detectedAvName.ToLower().Contains("eset"))
                     {
-                        // Dùng lệnh "explorer.exe /select," để mở Windows Explorer và chọn file
-                        System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{filePath}\"");
+                        // Kiểm tra file được tải xuống
+                        if (string.IsNullOrEmpty(_lastSavePath) || !File.Exists(_lastSavePath))
+                        {
+                            MessageBox.Show("Uninstaller file not found at expected location.",
+                                "File Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+
+                        LaunchForm2(_lastSavePath);
                     }
                     else
                     {
-                        // Nếu không tìm thấy file, chỉ mở thư mục Downloads
-                        string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-                        System.Diagnostics.Process.Start("explorer.exe", downloadsPath);
+                        // Các antivirus khác → chạy exe ngay lập tức
+                        if (File.Exists(_lastSavePath))
+                        {
+                            if (_lastSavePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Chạy file exe vừa tải
+                                Process.Start(_lastSavePath);
+
+                                // Chờ 1 giây rồi thoát app
+                                await Task.Delay(1000);
+                                Application.Exit();
+                            }
+                            else
+                            {
+                                // File không phải .exe (vd: Trend Micro tải về là .zip)
+                                // → không thể auto-run, mở thư mục chứa file cho người dùng tự giải nén/chạy.
+                                MessageBox.Show(
+                                    $"File đã tải về nhưng không thể tự chạy (không phải .exe):\n{_lastSavePath}\n\nVui lòng giải nén/chạy thủ công.",
+                                    "Manual Action Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                Process.Start("explorer.exe", $"/select,\"{_lastSavePath}\"");
+                            }
+                        }
+                        else
+                        {
+                            MessageBox.Show("Downloaded file not found.",
+                                "File Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error opening folder: {ex.Message}", "System Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show($"Error: {ex.Message}",
+                        "System Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
         }
