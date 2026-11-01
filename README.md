@@ -1,20 +1,25 @@
 🛡️ Antivirus Finder Tool
 
-The Antivirus Finder Tool is a lightweight, essential utility designed to give users instant insight and control over their system's installed security software. It simplifies the process of verifying security status, accessing official product information, and preparing for software management.
+A lightweight Windows utility that detects the currently installed third-party antivirus, downloads its official removal tool, and runs it for you — including finishing the removal in Safe Mode when the vendor requires it (e.g. ESET).
 
 ✨ Key Features
 
-This tool focuses on three core functions to streamline security management:
-
-🔍 OS Antivirus Detection: Quickly scans the operating system (Windows, macOS, or Linux/Conceptual) to accurately identify and report the currently installed primary antivirus or security suite.
-🌐 Official Website Grounding: Provides a direct, verified link to the real production website of the detected antivirus product. This ensures safe access to support documentation, license information, or new version downloads.
-🗑️ Uninstaller Folder Access: Effortlessly opens the specific installation or download folder that contains the official uninstallation utility (e.g., uninstall.exe, uninst.app). This is crucial for streamlining software removal or modification processes.
+🔍 **Antivirus Detection** — queries Windows Security Center (`ROOT\SecurityCenter2`) to identify the installed third-party antivirus, filtering out stale/leftover entries so a prior AV update doesn't get reported as a second product.
+🌐 **Official Uninstaller Download** — resolves the detected AV to its official removal tool (Kaspersky, Avast, AVG, Avira, Bitdefender, ESET, McAfee, Norton, Trend Micro) and downloads it with live progress/speed.
+🧰 **Safe Mode Removal (ESET)** — some vendors only allow a clean uninstall from Safe Mode. The tool can reboot the machine into Safe Mode Minimal, automatically relaunch itself there, run the uninstaller, then revert the boot configuration and restart back to Normal Mode.
+🖥️ **OS Detection** — reports the Windows version/architecture and flags unprotected legacy systems (e.g. Windows 7 without a modern AV).
 
 🚀 Usage
 
-Using the Antivirus Finder Tool is straightforward:
-Launch the Application. (e.g., Double-click the executable or run the script).
-The tool will automatically perform a scan and display the results in the main interface.
+1. Run the app as Administrator (required for Safe Mode boot configuration via `bcdedit`).
+2. It scans automatically on launch and shows the detected antivirus.
+3. Click **DOWNLOAD** to fetch the official uninstaller (or let auto-download run).
+4. For AVs that require Safe Mode, follow the on-screen steps — the machine will restart and the tool continues automatically.
+
+⚠️ Notes
+
+- Requires Windows with `bcdedit`/`shutdown` available (Administrator privileges).
+- The Safe Mode flow modifies boot configuration temporarily and reverts it automatically after the uninstaller finishes.
 
 🤝 Contributing
 
