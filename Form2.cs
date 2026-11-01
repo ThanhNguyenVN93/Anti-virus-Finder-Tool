@@ -194,8 +194,13 @@ namespace frmavfinnder
                 // Chạy uninstaller và đợi nó kết thúc
                 Process uninstallerProc = Process.Start(_uninstallerPath);
 
-                // Đợi uninstaller thoát trên background thread để UI không đơ
-                await Task.Run(() => uninstallerProc.WaitForExit());
+                // Process.Start trả null nếu UseShellExecute tái sử dụng 1 tiến trình
+                // đã chạy sẵn thay vì tạo mới — không có gì để WaitForExit trong trường hợp đó.
+                if (uninstallerProc != null)
+                {
+                    // Đợi uninstaller thoát trên background thread để UI không đơ
+                    await Task.Run(() => uninstallerProc.WaitForExit());
+                }
 
                 lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
                 lblstatus.Text = "✓ Uninstaller finished";

@@ -63,20 +63,29 @@ namespace frmavfinnder
                 }
             }
 
-            // Phát hiện hệ điều hành qua WMI
+            // Phát hiện hệ điều hành qua WMI.
+            // Bọc try/catch: máy đang gặp sự cố AV (đúng đối tượng app này nhắm tới)
+            // có thể khiến dịch vụ WMI không phản hồi được → không để app crash ngay lúc mở.
             string r = "";
-            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
-                "SELECT * FROM Win32_OperatingSystem"))
+            try
             {
-                foreach (ManagementObject obj in searcher.Get())
+                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                    "SELECT * FROM Win32_OperatingSystem"))
                 {
-                    using (obj)
+                    foreach (ManagementObject obj in searcher.Get())
                     {
-                        r = obj["Caption"] + " - " + obj["OSArchitecture"];
+                        using (obj)
+                        {
+                            r = obj["Caption"] + " - " + obj["OSArchitecture"];
+                        }
                     }
                 }
+                r = r.Replace("NT 5.1.2600", "XP").Replace("NT 5.2.3790", "Server 2003");
             }
-            r = r.Replace("NT 5.1.2600", "XP").Replace("NT 5.2.3790", "Server 2003");
+            catch (Exception ex)
+            {
+                r = $"Không thể xác định hệ điều hành ({ex.Message})";
+            }
             lblos.Text = r;
 
             // Populate AV Support List
@@ -182,8 +191,11 @@ namespace frmavfinnder
                         using (obj)
                         {
                             string version = obj["Version"]?.ToString() ?? "";
-                            // Windows 7 có version 6.1.x
-                            return version.StartsWith("6.1");
+                            // ProductType: 1 = Workstation, 2/3 = Domain Controller/Server.
+                            // Version 6.1.x khớp cả Windows 7 lẫn Windows Server 2008 R2,
+                            // nên phải lọc thêm ProductType để không nhận nhầm bản server.
+                            uint productType = (uint)(obj["ProductType"] ?? 0u);
+                            return version.StartsWith("6.1") && productType == 1;
                         }
                     }
                 }
@@ -387,11 +399,16 @@ namespace frmavfinnder
         // ────────────────────────────────────────────────────
         private void WebClient_DownloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
         {
-            progressBarDownload.Value = e.ProgressPercentage;
-            lblstatus.Text = $"Downloading... ({e.ProgressPercentage}%)";
+            // Một số server (vd: các link mirror AV) không trả Content-Length →
+            // TotalBytesToReceive = -1 và ProgressPercentage có thể ra ngoài [0,100],
+            // gán thẳng vào ProgressBar.Value sẽ ném ArgumentOutOfRangeException.
+            int percent = Math.Max(0, Math.Min(100, e.ProgressPercentage));
+            progressBarDownload.Value = percent;
+            lblstatus.Text = e.TotalBytesToReceive > 0
+                ? $"Downloading... ({percent}%)"
+                : "Downloading...";
 
-            double totalMB    = (double)e.TotalBytesToReceive / 1_048_576;
-            double receivedMB = (double)e.BytesReceived        / 1_048_576;
+            double receivedMB = (double)e.BytesReceived / 1_048_576;
 
             // Fix #7: Tốc độ thực = (bytes mới nhận) / (thời gian thực trôi qua)
             double elapsedSec = _downloadStopwatch.Elapsed.TotalSeconds;
@@ -402,7 +419,10 @@ namespace frmavfinnder
             _lastBytesReceived = e.BytesReceived;
             _downloadStopwatch.Restart();
 
-            lblspeed.Text = $"{receivedMB:N2} MB / {totalMB:N2} MB  |  {speedKBps:N0} KB/s";
+            string totalText = e.TotalBytesToReceive > 0
+                ? $"{(double)e.TotalBytesToReceive / 1_048_576:N2} MB"
+                : "? MB";
+            lblspeed.Text = $"{receivedMB:N2} MB / {totalText}  |  {speedKBps:N0} KB/s";
         }
 
         // ────────────────────────────────────────────────────
