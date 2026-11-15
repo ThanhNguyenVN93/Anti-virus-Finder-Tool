@@ -104,7 +104,7 @@ namespace frmavfinnder
             {
                 Text = "HỦY",
                 Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold),
-                Size = new System.Drawing.Size(60, 24),
+                Size = new System.Drawing.Size(62, 30),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = System.Drawing.Color.FromArgb(200, 60, 60),
                 ForeColor = System.Drawing.Color.White,
@@ -115,7 +115,11 @@ namespace frmavfinnder
             _btnCancel.Click += (s, e) => { try { _cts?.Cancel(); } catch { } };
 
             this.Controls.Add(_header);
-            this.Controls.Add(_btnCancel);
+            // Nút HỦY là con của nhóm "Tải công cụ gỡ", nằm ngay cạnh thanh tiến trình.
+            // (progressBar ở (110,55) rộng 228 → kết thúc x=338; đặt HỦY ở x=344.)
+            _btnCancel.Location = new System.Drawing.Point(344, 55);
+            groupBox2.Controls.Add(_btnCancel);
+            _btnCancel.BringToFront();
             _header.BringToFront();
 
             // Tiêu đề các nhóm dùng màu nhấn cho đồng bộ.
@@ -168,10 +172,6 @@ namespace frmavfinnder
             _btnLang.Location = new System.Drawing.Point(hw - 90 - 88, 6);
             _btnOpenData.BringToFront();
             _btnLang.BringToFront();
-            // Nút HỦY cạnh thanh tiến trình download.
-            _btnCancel.Location = new System.Drawing.Point(this.ClientSize.Width - 78, 300);
-            _btnCancel.BringToFront();
-
             base.OnShown(e);
 
             // Feature round2 #13: kiểm tra bản mới ở background.

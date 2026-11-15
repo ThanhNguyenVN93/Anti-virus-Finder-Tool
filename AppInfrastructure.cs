@@ -165,7 +165,11 @@ namespace frmavfinnder
         private const uint WTD_CHOICE_FILE = 1;
         private const uint WTD_STATEACTION_VERIFY = 1;
         private const uint WTD_STATEACTION_CLOSE = 2;
-        private const uint WTD_SAFER_FLAG = 0x100;
+        // KHÔNG dùng WTD_SAFER_FLAG (0x100): nó áp chính sách SAFER và gây
+        // CERT_E_UNTRUSTEDROOT (0x800B0109) ngay cả với file ký hợp lệ (vd kavremvr.exe
+        // của Kaspersky). Dùng WTD_REVOCATION_CHECK_NONE để verify chuỗi tin cậy mà
+        // không gọi mạng kiểm thu hồi (tránh treo/offline).
+        private const uint WTD_REVOCATION_CHECK_NONE = 0x10;
 
         /// <summary>
         /// Xác minh file: chữ ký Authenticode hợp lệ + (tuỳ chọn) đúng tên người ký kỳ vọng.
@@ -203,7 +207,7 @@ namespace frmavfinnder
                     dwUnionChoice = WTD_CHOICE_FILE,
                     pFile = pFile,
                     dwStateAction = WTD_STATEACTION_VERIFY,
-                    dwProvFlags = WTD_SAFER_FLAG
+                    dwProvFlags = WTD_REVOCATION_CHECK_NONE
                 };
 
                 pData = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(WINTRUST_DATA)));
@@ -218,7 +222,7 @@ namespace frmavfinnder
 
                 if (hr != 0)
                 {
-                    result.Message = "File chưa ký số hoặc chữ ký không hợp lệ.";
+                    result.Message = $"File chưa ký số hoặc chữ ký không hợp lệ. (hr=0x{(uint)hr:X8})";
                     return result;
                 }
             }
