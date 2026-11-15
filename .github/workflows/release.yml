@@ -7,6 +7,13 @@ on:
   push:
     tags:
       - 'v*'
+  # Cho phép bấm "Run workflow" trên tab Actions để phát hành mà không cần
+  # push tag thủ công (chỉ cần nhập số phiên bản).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Phiên bản phát hành, vd v1.2.0'
+        required: true
 
 permissions:
   contents: write        # tạo GitHub Release
@@ -72,8 +79,10 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item $exe.FullName dist\
           if (Test-Path avlist.json) { Copy-Item avlist.json dist\ }
-          # Zip theo tag.
-          $tag = "${{ github.ref_name }}"
+          # Tag: từ ref khi push tag, hoặc từ input khi chạy thủ công.
+          $tag = "${{ github.event.inputs.version }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ascii
           $zip = "dist\AntiVirusFinderTool-$tag.zip"
           Compress-Archive -Path dist\*.exe, dist\avlist.json -DestinationPath $zip -Force
           # SHA256SUMS cho mọi file trong dist.
@@ -91,6 +100,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.stage.outputs.tag }}
+          name: ${{ steps.stage.outputs.tag }}
           files: |
             dist/*.exe
             dist/*.zip

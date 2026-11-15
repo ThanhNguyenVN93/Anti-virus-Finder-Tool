@@ -165,10 +165,7 @@ namespace frmavfinnder
                     Match = new[] { "f-secure", "fsecure", "withsecure" }, Name = "F-Secure / WithSecure",
                     Url = "https://download.sp.f-secure.com/uninstallationtool/FsUninstallationTool.exe",
                     ExpectedSigner = new[] { "f-secure", "withsecure" }, RequiresSafeMode = false },
-                new AvEntry {
-                    Match = new[] { "sophos" }, Name = "Sophos",
-                    Url = "https://download.sophos.com/tools/SophosZap.exe",
-                    ExpectedSigner = new[] { "sophos" }, RequiresSafeMode = false },
+                // (Sophos đã bỏ — ít phổ biến ở VN và link cần đăng ký.)
                 // Phát hiện-only (chưa có remover chính thức tải trực tiếp).
                 new AvEntry {
                     Match = new[] { "bkav" }, Name = "BKAV",

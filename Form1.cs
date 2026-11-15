@@ -28,6 +28,14 @@ namespace frmavfinnder
         private Button _btnOpenData;
         private Button _btnLang;
         private LinkLabel _lblUpdate;
+        private UpdateCheck.Result _updateResult;
+        private Panel _header;
+        private Label _lblTitle;
+        private Label _lblSubtitle;
+
+        // Bảng màu dùng chung.
+        private static readonly System.Drawing.Color Accent = System.Drawing.Color.FromArgb(0, 120, 215);
+        private static readonly System.Drawing.Color AccentDark = System.Drawing.Color.FromArgb(0, 99, 177);
 
         public Form1()
         {
@@ -35,9 +43,63 @@ namespace frmavfinnder
             SetupExtraButtons();
         }
 
-        // Nút HỦY (khi tải) và MỞ THƯ MỤC DỮ LIỆU (Feature round3 #11).
+        // Header + nút phụ (thiết kế lại giao diện).
         private void SetupExtraButtons()
         {
+            // ── Thanh header màu nhấn ở trên cùng ──
+            _header = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 56,
+                BackColor = Accent
+            };
+
+            _lblTitle = new Label
+            {
+                Text = "🛡  ANTIVIRUS FINDER",
+                AutoSize = true,
+                ForeColor = System.Drawing.Color.White,
+                Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold),
+                Location = new System.Drawing.Point(14, 7),
+                BackColor = System.Drawing.Color.Transparent
+            };
+            _lblSubtitle = new Label
+            {
+                Text = "Phát hiện & gỡ antivirus bên thứ ba • v1.2",
+                AutoSize = true,
+                ForeColor = System.Drawing.Color.FromArgb(220, 235, 250),
+                Font = new System.Drawing.Font("Segoe UI", 8F),
+                Location = new System.Drawing.Point(16, 34),
+                BackColor = System.Drawing.Color.Transparent
+            };
+
+            _btnLang = MakeHeaderButton("VI / EN");
+            _btnLang.Location = new System.Drawing.Point(272, 6);   // tinh chỉnh lại ở OnShown
+            _btnLang.Click += (s, e) => { Loc.Toggle(); ApplyLanguage(); };
+
+            _btnOpenData = MakeHeaderButton("📂 Data/Log");
+            _btnOpenData.Location = new System.Drawing.Point(360, 6);
+            _btnOpenData.Click += (s, e) => { try { Process.Start("explorer.exe", AppPaths.DataDir); } catch { } };
+
+            _lblUpdate = new LinkLabel
+            {
+                Text = "",
+                AutoSize = true,
+                Visible = false,
+                Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Bold),
+                LinkColor = System.Drawing.Color.White,
+                ActiveLinkColor = System.Drawing.Color.FromArgb(255, 235, 150),
+                BackColor = System.Drawing.Color.Transparent
+            };
+            _lblUpdate.LinkClicked += (s, e) => ShowUpdateDialog();
+
+            _header.Controls.Add(_lblTitle);
+            _header.Controls.Add(_lblSubtitle);
+            _header.Controls.Add(_btnLang);
+            _header.Controls.Add(_btnOpenData);
+            _header.Controls.Add(_lblUpdate);
+
+            // ── Nút HỦY khi đang tải (nằm trên form, cạnh thanh tiến trình) ──
             _btnCancel = new Button
             {
                 Text = "HỦY",
@@ -52,51 +114,30 @@ namespace frmavfinnder
             _btnCancel.FlatAppearance.BorderSize = 0;
             _btnCancel.Click += (s, e) => { try { _cts?.Cancel(); } catch { } };
 
-            _btnOpenData = new Button
-            {
-                Text = "📂 Data/Log",
-                Font = new System.Drawing.Font("Segoe UI", 8F),
-                Size = new System.Drawing.Size(90, 24),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = System.Drawing.Color.FromArgb(230, 230, 230),
-                Cursor = Cursors.Hand
-            };
-            _btnOpenData.FlatAppearance.BorderSize = 1;
-            _btnOpenData.Click += (s, e) =>
-            {
-                try { Process.Start("explorer.exe", AppPaths.DataDir); } catch { }
-            };
-
-            _lblUpdate = new LinkLabel
-            {
-                Text = "",
-                AutoSize = true,
-                Visible = false,
-                Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Bold),
-                LinkColor = System.Drawing.Color.FromArgb(200, 80, 0)
-            };
-            _lblUpdate.LinkClicked += (s, e) =>
-            {
-                try { Process.Start(((LinkLabel)s).Tag as string ?? "https://github.com/ThanhNguyenVN93/Anti-virus-Finder-Tool/releases"); }
-                catch { }
-            };
-
-            _btnLang = new Button
-            {
-                Text = "VI/EN",
-                Font = new System.Drawing.Font("Segoe UI", 8F),
-                Size = new System.Drawing.Size(56, 24),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = System.Drawing.Color.FromArgb(230, 230, 230),
-                Cursor = Cursors.Hand
-            };
-            _btnLang.FlatAppearance.BorderSize = 1;
-            _btnLang.Click += (s, e) => { Loc.Toggle(); ApplyLanguage(); };
-
-            this.Controls.Add(_btnOpenData);
-            this.Controls.Add(_btnLang);
+            this.Controls.Add(_header);
             this.Controls.Add(_btnCancel);
-            this.Controls.Add(_lblUpdate);
+            _header.BringToFront();
+
+            // Tiêu đề các nhóm dùng màu nhấn cho đồng bộ.
+            foreach (var gb in new[] { groupBox1, groupBox2, groupBox3, groupBox4 })
+                gb.ForeColor = Accent;
+        }
+
+        private Button MakeHeaderButton(string text)
+        {
+            var b = new Button
+            {
+                Text = text,
+                Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Bold),
+                Size = new System.Drawing.Size(84, 26),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = System.Drawing.Color.White,
+                ForeColor = Accent,
+                Cursor = Cursors.Hand
+            };
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(225, 236, 248);
+            return b;
         }
 
         // Áp ngôn ngữ cho các nhãn UI chính (Feature round2 #12).
@@ -121,27 +162,33 @@ namespace frmavfinnder
 
         protected override void OnShown(EventArgs e)
         {
-            base.OnShown(e);
-            // Đặt nút phụ sau khi form đã có kích thước thật.
-            _btnOpenData.Location = new System.Drawing.Point(this.ClientSize.Width - 100, 6);
-            _btnLang.Location = new System.Drawing.Point(this.ClientSize.Width - 160, 6);
-            _btnCancel.Location = new System.Drawing.Point(this.ClientSize.Width - 70, 250);
-            _lblUpdate.Location = new System.Drawing.Point(12, this.ClientSize.Height - 20);
+            // Căn nút phụ trong header TRƯỚC khi vẽ (form cố định kích thước nên ổn định).
+            int hw = _header.ClientSize.Width;
+            _btnOpenData.Location = new System.Drawing.Point(hw - 90, 6);
+            _btnLang.Location = new System.Drawing.Point(hw - 90 - 88, 6);
             _btnOpenData.BringToFront();
+            _btnLang.BringToFront();
+            // Nút HỦY cạnh thanh tiến trình download.
+            _btnCancel.Location = new System.Drawing.Point(this.ClientSize.Width - 78, 300);
             _btnCancel.BringToFront();
+
+            base.OnShown(e);
 
             // Feature round2 #13: kiểm tra bản mới ở background.
             Task.Run(() => UpdateCheck.Check()).ContinueWith(t =>
             {
                 var r = t.Result;
+                _updateResult = r;
                 if (r != null && r.HasUpdate && !IsDisposed)
                 {
                     try
                     {
                         BeginInvoke(new Action(() =>
                         {
-                            _lblUpdate.Text = $"⬆ Có bản mới {r.LatestVersion} (đang dùng {r.CurrentVersion}) — tải về";
-                            _lblUpdate.Tag = r.Url;
+                            // Thay subtitle bằng thông báo bản mới (tránh chồng chữ).
+                            _lblSubtitle.Visible = false;
+                            _lblUpdate.Text = $"⬆ Có bản mới {r.LatestVersion} — xem & tải";
+                            _lblUpdate.Location = new System.Drawing.Point(16, 34);
                             _lblUpdate.Visible = true;
                             _lblUpdate.BringToFront();
                         }));
@@ -149,6 +196,73 @@ namespace frmavfinnder
                     catch { }
                 }
             });
+        }
+
+        // Hộp thoại "Có gì mới" + tải bản mới (Feature round2 #13 nâng cấp).
+        private async void ShowUpdateDialog()
+        {
+            var r = _updateResult;
+            if (r == null) { try { Process.Start("https://github.com/ThanhNguyenVN93/Anti-virus-Finder-Tool/releases"); } catch { } return; }
+
+            string notes = string.IsNullOrWhiteSpace(r.Notes) ? "(không có mô tả)" : r.Notes.Trim();
+            if (notes.Length > 1500) notes = notes.Substring(0, 1500) + "\n...";
+
+            bool hasAsset = !string.IsNullOrEmpty(r.AssetUrl);
+            var buttons = hasAsset ? MessageBoxButtons.YesNoCancel : MessageBoxButtons.OKCancel;
+
+            var choice = MessageBox.Show(
+                $"Phiên bản mới: {r.LatestVersion}  (đang dùng {r.CurrentVersion})\n\n" +
+                $"— Có gì mới —\n{notes}\n\n" +
+                (hasAsset
+                    ? "[Yes] Tải bản mới   •   [No] Mở trang release   •   [Cancel] Đóng"
+                    : "[OK] Mở trang release   •   [Cancel] Đóng"),
+                "Cập nhật", buttons, MessageBoxIcon.Information);
+
+            if (choice == DialogResult.Cancel) return;
+
+            if (hasAsset && choice == DialogResult.Yes)
+            {
+                await DownloadUpdateAsset(r);
+                return;
+            }
+
+            // Mở trang release.
+            try { Process.Start(r.Url ?? "https://github.com/ThanhNguyenVN93/Anti-virus-Finder-Tool/releases"); }
+            catch { }
+        }
+
+        private async Task DownloadUpdateAsset(UpdateCheck.Result r)
+        {
+            try
+            {
+                string dest = AppPaths.DownloadPath(string.IsNullOrEmpty(r.AssetName) ? "update-download" : r.AssetName);
+                string part = dest + ".part";
+                lblstatus.Text = "Đang tải bản mới...";
+                using (var cts = new CancellationTokenSource())
+                {
+                    var prog = new Progress<DownloadProgress>(p =>
+                    {
+                        if (p.TotalBytes > 0)
+                            lblstatus.Text = $"Tải bản mới... {p.BytesReceived * 100 / p.TotalBytes}%";
+                    });
+                    var outcome = await Downloader.DownloadAsync(r.AssetUrl, part, prog, cts.Token);
+                    if (!outcome.Success)
+                    {
+                        lblstatus.Text = "Tải bản mới thất bại.";
+                        MessageBox.Show($"Không tải được bản mới: {outcome.Message}", "Lỗi",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+                try { if (File.Exists(dest)) File.Delete(dest); File.Move(part, dest); } catch { }
+                lblstatus.Text = "Đã tải bản mới.";
+                // Mở thư mục chứa file để người dùng tự chạy/giải nén (tránh tự thay exe đang chạy).
+                try { Process.Start("explorer.exe", $"/select,\"{dest}\""); } catch { }
+            }
+            catch (Exception ex)
+            {
+                Log.Write($"DownloadUpdateAsset error: {ex.Message}");
+            }
         }
 
         private void timer1_Tick(object sender, EventArgs e)
@@ -222,6 +336,12 @@ namespace frmavfinnder
 
             PopulateAvSupportList();
             ApplyLanguage();
+
+            // Cho phép bỏ qua auto-scan lúc mở (hữu ích cho ảnh chụp/CI/kỹ thuật viên
+            // muốn tự bấm CHECK). Bật bằng biến môi trường AVFINDER_NO_AUTOSCAN=1.
+            if (Environment.GetEnvironmentVariable("AVFINDER_NO_AUTOSCAN") == "1")
+                return;
+
             btnavcheck.PerformClick();
         }
 

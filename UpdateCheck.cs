@@ -23,6 +23,9 @@ namespace frmavfinnder
             public string LatestVersion;
             public string CurrentVersion;
             public string Url = ReleasesPage;
+            public string Notes = "";          // What's New (release body)
+            public string AssetUrl = "";       // Link tải asset (.exe/.zip) nếu có
+            public string AssetName = "";
         }
 
         public static Result Check()
@@ -45,7 +48,25 @@ namespace frmavfinnder
                     string tag = m.Groups[1].Value.TrimStart('v', 'V');
                     res.LatestVersion = tag;
                     res.HasUpdate = CompareVersions(tag, res.CurrentVersion) > 0;
-                    Log.Write($"UpdateCheck: current={res.CurrentVersion} latest={tag} hasUpdate={res.HasUpdate}");
+
+                    // What's New (release body) — giải mã chuỗi JSON.
+                    res.Notes = ExtractJsonString(json, "body");
+
+                    // Link trang release cụ thể.
+                    string htmlUrl = ExtractJsonString(json, "html_url");
+                    if (!string.IsNullOrEmpty(htmlUrl)) res.Url = htmlUrl;
+
+                    // Asset đầu tiên là .exe hoặc .zip.
+                    var am = Regex.Match(json,
+                        "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.(?:exe|zip))\"",
+                        RegexOptions.IgnoreCase);
+                    if (am.Success)
+                    {
+                        res.AssetUrl = am.Groups[1].Value;
+                        try { res.AssetName = System.IO.Path.GetFileName(new Uri(res.AssetUrl).LocalPath); } catch { }
+                    }
+
+                    Log.Write($"UpdateCheck: current={res.CurrentVersion} latest={tag} hasUpdate={res.HasUpdate} asset={res.AssetName}");
                 }
             }
             catch (Exception ex)
@@ -53,6 +74,50 @@ namespace frmavfinnder
                 Log.Write($"UpdateCheck failed: {ex.Message}");
             }
             return res;
+        }
+
+        // Đọc một chuỗi JSON theo key (giải mã \n, \" , \\ , \/, \t).
+        private static string ExtractJsonString(string json, string key)
+        {
+            int k = json.IndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            if (k < 0) return "";
+            int colon = json.IndexOf(':', k);
+            if (colon < 0) return "";
+            int i = colon + 1;
+            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+            if (i >= json.Length || json[i] != '"') return "";
+            i++;
+            var sb = new System.Text.StringBuilder();
+            while (i < json.Length && json[i] != '"')
+            {
+                char c = json[i];
+                if (c == '\\' && i + 1 < json.Length)
+                {
+                    char n = json[i + 1];
+                    switch (n)
+                    {
+                        case 'n': sb.Append('\n'); break;
+                        case 'r': sb.Append('\r'); break;
+                        case 't': sb.Append('\t'); break;
+                        case '"': sb.Append('"'); break;
+                        case '\\': sb.Append('\\'); break;
+                        case '/': sb.Append('/'); break;
+                        case 'u':
+                            if (i + 5 < json.Length &&
+                                int.TryParse(json.Substring(i + 2, 4),
+                                    System.Globalization.NumberStyles.HexNumber,
+                                    System.Globalization.CultureInfo.InvariantCulture, out int cp))
+                            {
+                                sb.Append((char)cp); i += 4;
+                            }
+                            break;
+                        default: sb.Append(n); break;
+                    }
+                    i += 2;
+                }
+                else { sb.Append(c); i++; }
+            }
+            return sb.ToString();
         }
 
         private static string CurrentVersion()

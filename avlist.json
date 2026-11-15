@@ -10,7 +10,6 @@
   { "match": ["trend micro", "trendmicro"], "name": "Trend Micro", "url": "https://github.com/ThanhNguyenVN93/Trendmicro-Uninstaller-Support-Tool/releases/download/v1.0.0/Trendmicro.Uninstaller.Support.Tool.zip", "safeMode": false },
   { "match": ["malwarebytes"], "name": "Malwarebytes", "url": "https://downloads.malwarebytes.com/file/mbst", "signer": ["malwarebytes"], "safeMode": false, "fileName": "mb-support-tool.exe" },
   { "match": ["f-secure", "fsecure", "withsecure"], "name": "F-Secure / WithSecure", "url": "https://download.sp.f-secure.com/uninstallationtool/FsUninstallationTool.exe", "signer": ["f-secure", "withsecure"], "safeMode": false },
-  { "match": ["sophos"], "name": "Sophos", "url": "https://download.sophos.com/tools/SophosZap.exe", "signer": ["sophos"], "safeMode": false },
   { "match": ["bkav"], "name": "BKAV", "url": "", "safeMode": false },
   { "match": ["cmc"], "name": "CMC", "url": "", "safeMode": false }
 ]

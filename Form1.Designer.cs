@@ -67,7 +67,7 @@
             this.groupBox1.Controls.Add(this.lblavname);
             this.groupBox1.Controls.Add(this.btnavcheck);
             this.groupBox1.Controls.Add(this.lblavstatus);
-            this.groupBox1.Location = new System.Drawing.Point(10, 10);
+            this.groupBox1.Location = new System.Drawing.Point(10, 65);
             this.groupBox1.Name = "groupBox1";
             this.groupBox1.Padding = new System.Windows.Forms.Padding(15);
             this.groupBox1.Size = new System.Drawing.Size(430, 160);
@@ -149,7 +149,7 @@
             this.groupBox2.Controls.Add(this.lblspeed);
             this.groupBox2.Controls.Add(this.progressBarDownload);
             this.groupBox2.Controls.Add(this.btndownload);
-            this.groupBox2.Location = new System.Drawing.Point(10, 180);
+            this.groupBox2.Location = new System.Drawing.Point(10, 235);
             this.groupBox2.Name = "groupBox2";
             this.groupBox2.Padding = new System.Windows.Forms.Padding(15);
             this.groupBox2.Size = new System.Drawing.Size(430, 160);
@@ -205,7 +205,7 @@
             // groupBox3
             //
             this.groupBox3.Controls.Add(this.lblos);
-            this.groupBox3.Location = new System.Drawing.Point(10, 350);
+            this.groupBox3.Location = new System.Drawing.Point(10, 405);
             this.groupBox3.Name = "groupBox3";
             this.groupBox3.Padding = new System.Windows.Forms.Padding(15);
             this.groupBox3.Size = new System.Drawing.Size(430, 70);
@@ -232,7 +232,7 @@
             // groupBox4
             //
             this.groupBox4.Controls.Add(this.lbAvSupport);
-            this.groupBox4.Location = new System.Drawing.Point(10, 430);
+            this.groupBox4.Location = new System.Drawing.Point(10, 485);
             this.groupBox4.Name = "groupBox4";
             this.groupBox4.Padding = new System.Windows.Forms.Padding(15);
             this.groupBox4.Size = new System.Drawing.Size(430, 155);
@@ -258,7 +258,7 @@
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(450, 595);
+            this.ClientSize = new System.Drawing.Size(450, 650);
             this.Controls.Add(this.groupBox4);
             this.Controls.Add(this.groupBox3);
             this.Controls.Add(this.groupBox2);
@@ -266,8 +266,8 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.MaximizeBox = false;
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            this.MaximumSize = new System.Drawing.Size(466, 635);
-            this.MinimumSize = new System.Drawing.Size(466, 635);
+            this.MaximumSize = new System.Drawing.Size(466, 690);
+            this.MinimumSize = new System.Drawing.Size(466, 690);
             this.Name = "Form1";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "ANTI-VIRUS FINDER TOOL V1.2";
