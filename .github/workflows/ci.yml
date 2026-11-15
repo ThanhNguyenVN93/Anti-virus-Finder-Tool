@@ -85,3 +85,14 @@ jobs:
             msbuild $t.FullName /p:Configuration=Release /p:FrameworkPathOverride="$env:FX_REF"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+
+      # Mỗi lần CI chạy để lại bản build tải được (đỡ phải build thủ công).
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AntiVirusFinderTool-build
+          path: |
+            **/bin/Release/*.exe
+            avlist.json
+          if-no-files-found: warn
