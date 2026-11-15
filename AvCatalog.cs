@@ -24,6 +24,9 @@ namespace frmavfinnder
         public bool RequiresSafeMode { get; set; }
         // Ghi đè tên file lưu (nếu null thì lấy từ URL).
         public string FileName { get; set; }
+        // SHA256 kỳ vọng (hex). Dùng cho tool TỰ PHÁT HÀNH không ký số Authenticode
+        // (vd BKAV, CMC): verify bằng hash thay cho chữ ký. Null = verify bằng chữ ký.
+        public string Sha256 { get; set; }
 
         public string ResolveFileName()
         {
@@ -166,13 +169,28 @@ namespace frmavfinnder
                     Url = "https://download.sp.f-secure.com/uninstallationtool/FsUninstallationTool.exe",
                     ExpectedSigner = new[] { "f-secure", "withsecure" }, RequiresSafeMode = false },
                 // (Sophos đã bỏ — ít phổ biến ở VN và link cần đăng ký.)
-                // Phát hiện-only (chưa có remover chính thức tải trực tiếp).
+
+                // ── BKAV & CMC (tool tự phát hành, không ký số → chốt bằng SHA256) ──
+                // Lưu ý: các mục cụ thể (Pro/Home) phải đứng TRƯỚC mục "bkav" chung
+                // để FindByDisplayName khớp đúng biến thể trước.
+                new AvEntry {
+                    Match = new[] { "bkav pro", "bkav endpoint" }, Name = "BKAV Pro",
+                    Url = "https://github.com/ThanhNguyenVN93/BKAV-Uninstaller-Support-Tool/releases/download/bkav/BKAV.Pro.Uninstaller.Tool.exe",
+                    Sha256 = "06b46c9ba5f031f6a56482fb083cb911e1d5e8610b872cc60eb63c1ba2e2cfea",
+                    FileName = "BKAV.Pro.Uninstaller.Tool.exe", RequiresSafeMode = false },
+                new AvEntry {
+                    Match = new[] { "bkav home" }, Name = "BKAV Home",
+                    Url = "https://github.com/ThanhNguyenVN93/BKAV-Home-Uninstaller-Support-Tool/releases/download/v1.0.0/BKAV-Home-Uninstaller.exe",
+                    Sha256 = "ad4a2c0604c78c825cfc4665241d5a4c31f09d3259c27c0fe664d34768bc2499",
+                    FileName = "BKAV-Home-Uninstaller.exe", RequiresSafeMode = false },
                 new AvEntry {
                     Match = new[] { "bkav" }, Name = "BKAV",
-                    Url = "", ExpectedSigner = null, RequiresSafeMode = false },
+                    Url = "", ExpectedSigner = null, RequiresSafeMode = false },  // chung: detect-only
                 new AvEntry {
                     Match = new[] { "cmc" }, Name = "CMC",
-                    Url = "", ExpectedSigner = null, RequiresSafeMode = false },
+                    Url = "https://drive.usercontent.google.com/download?id=1YqnJHMCyG0YW6kD4zrsf8OFpuESGRQjD&export=download&confirm=t",
+                    Sha256 = "6ffc820ce40d526ac5a03fdf0d7e53a00ca8cc10519e291fadf516051530fc7c",
+                    FileName = "CMC-Uninstaller.zip", RequiresSafeMode = false },
             };
         }
 
@@ -196,7 +214,8 @@ namespace frmavfinnder
                     Url = GetString(obj, "url") ?? "",
                     ExpectedSigner = GetStringArray(obj, "signer"),
                     RequiresSafeMode = GetBool(obj, "safeMode"),
-                    FileName = GetString(obj, "fileName")
+                    FileName = GetString(obj, "fileName"),
+                    Sha256 = GetString(obj, "sha256")
                 };
                 if (e.Match != null && e.Match.Length > 0 && !string.IsNullOrEmpty(e.Name))
                     list.Add(e);

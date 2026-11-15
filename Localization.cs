@@ -40,6 +40,13 @@ namespace frmavfinnder
             return key;
         }
 
+        // Chọn chuỗi theo ngôn ngữ hiện tại — dùng inline cho hộp thoại/thông báo
+        // để đồng bộ ngôn ngữ mà không cần khai báo key cho từng câu.
+        public static string Pick(string vi, string en)
+        {
+            return Current == Lang.VI ? vi : en;
+        }
+
         public static void Toggle()
         {
             Current = Current == Lang.VI ? Lang.EN : Lang.VI;

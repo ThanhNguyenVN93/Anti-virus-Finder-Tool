@@ -10,6 +10,8 @@
   { "match": ["trend micro", "trendmicro"], "name": "Trend Micro", "url": "https://github.com/ThanhNguyenVN93/Trendmicro-Uninstaller-Support-Tool/releases/download/v1.0.0/Trendmicro.Uninstaller.Support.Tool.zip", "safeMode": false },
   { "match": ["malwarebytes"], "name": "Malwarebytes", "url": "https://downloads.malwarebytes.com/file/mbst", "signer": ["malwarebytes"], "safeMode": false, "fileName": "mb-support-tool.exe" },
   { "match": ["f-secure", "fsecure", "withsecure"], "name": "F-Secure / WithSecure", "url": "https://download.sp.f-secure.com/uninstallationtool/FsUninstallationTool.exe", "signer": ["f-secure", "withsecure"], "safeMode": false },
+  { "match": ["bkav pro", "bkav endpoint"], "name": "BKAV Pro", "url": "https://github.com/ThanhNguyenVN93/BKAV-Uninstaller-Support-Tool/releases/download/bkav/BKAV.Pro.Uninstaller.Tool.exe", "sha256": "06b46c9ba5f031f6a56482fb083cb911e1d5e8610b872cc60eb63c1ba2e2cfea", "fileName": "BKAV.Pro.Uninstaller.Tool.exe", "safeMode": false },
+  { "match": ["bkav home"], "name": "BKAV Home", "url": "https://github.com/ThanhNguyenVN93/BKAV-Home-Uninstaller-Support-Tool/releases/download/v1.0.0/BKAV-Home-Uninstaller.exe", "sha256": "ad4a2c0604c78c825cfc4665241d5a4c31f09d3259c27c0fe664d34768bc2499", "fileName": "BKAV-Home-Uninstaller.exe", "safeMode": false },
   { "match": ["bkav"], "name": "BKAV", "url": "", "safeMode": false },
-  { "match": ["cmc"], "name": "CMC", "url": "", "safeMode": false }
+  { "match": ["cmc"], "name": "CMC", "url": "https://drive.usercontent.google.com/download?id=1YqnJHMCyG0YW6kD4zrsf8OFpuESGRQjD&export=download&confirm=t", "sha256": "6ffc820ce40d526ac5a03fdf0d7e53a00ca8cc10519e291fadf516051530fc7c", "fileName": "CMC-Uninstaller.zip", "safeMode": false }
 ]

@@ -138,7 +138,10 @@ namespace frmavfinnder
             "f-secure.com",
             "sophos.com",
             "github.com",
-            "githubusercontent.com"
+            "githubusercontent.com",
+            // BKAV/CMC tool tự phát hành — an toàn nhờ chốt SHA256 trong catalog.
+            "drive.google.com",
+            "usercontent.google.com"
         };
 
         public static bool IsAllowed(Uri uri)

@@ -157,6 +157,9 @@ namespace frmavfinnder
                 btndownload.Text = Loc.T("btnDownload");
                 lblavname.Text = Loc.T("lblAvName");
                 label1.Text = Loc.T("lblDirectory");
+                if (_lblSubtitle != null)
+                    _lblSubtitle.Text = Loc.Pick("Phát hiện & gỡ antivirus bên thứ ba • v1.2",
+                                                 "Detect & remove third-party antivirus • v1.2");
             }
             catch (Exception ex)
             {
@@ -404,7 +407,7 @@ namespace frmavfinnder
         private async void btnavcheck_Click_1(object sender, EventArgs e)
         {
             lblavstatus.ForeColor = System.Drawing.Color.FromArgb(0, 120, 215);
-            lblavstatus.Text = "Scanning...";
+            lblavstatus.Text = Loc.Pick("Đang quét...", "Scanning...");
             txtfoundav.Text = "";
             txtDirectory.Text = "";
             btnavcheck.Enabled = false;
@@ -434,9 +437,10 @@ namespace frmavfinnder
             {
                 string list = string.Join("\n", allAv.Select(a => $"  • {a.DisplayName} [{a.Source}]"));
                 MessageBox.Show(
-                    $"Phát hiện {allAv.Count} phần mềm diệt virus:\n{list}\n\n" +
-                    $"Sẽ xử lý trước: {detectedAvName}.\nSau khi gỡ xong và khởi động lại, chạy lại tool để gỡ phần còn lại.",
-                    "Nhiều AV", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Loc.Pick(
+                        $"Phát hiện {allAv.Count} phần mềm diệt virus:\n{list}\n\nSẽ xử lý trước: {detectedAvName}.\nSau khi gỡ xong và khởi động lại, chạy lại tool để gỡ phần còn lại.",
+                        $"Detected {allAv.Count} antivirus products:\n{list}\n\nWill handle first: {detectedAvName}.\nAfter it is removed and you reboot, run the tool again for the rest."),
+                    Loc.Pick("Nhiều AV", "Multiple AV"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
 
             _targetEntry = AvCatalog.FindByDisplayName(detectedAvName);
@@ -444,22 +448,22 @@ namespace frmavfinnder
             // Feature round3 #7: chính sách doanh nghiệp có thể giới hạn AV được gỡ.
             if (_targetEntry != null && !Policy.Current.IsAvAllowed(_targetEntry.Name))
             {
-                lblavstatus.Text = "Bị chặn bởi policy";
+                lblavstatus.Text = Loc.Pick("Bị chặn bởi policy", "Blocked by policy");
                 txtfoundav.Text = detectedAvName;
-                txtDirectory.Text = $"Policy không cho phép gỡ {_targetEntry.Name}.";
+                txtDirectory.Text = Loc.Pick($"Policy không cho phép gỡ {_targetEntry.Name}.", $"Policy does not allow removing {_targetEntry.Name}.");
                 btndownload.Enabled = false;
                 btnavcheck.Enabled = true;
                 return;
             }
 
             lblavstatus.ForeColor = System.Drawing.Color.FromArgb(200, 120, 0);
-            lblavstatus.Text = "Found:";
+            lblavstatus.Text = Loc.Pick("Phát hiện:", "Found:");
             txtfoundav.Text = detectedAvName;
 
             // AV có trong catalog nhưng chưa có remover (BKAV/CMC...).
             if (_targetEntry == null || !_targetEntry.HasRemover)
             {
-                txtDirectory.Text = "Chưa có công cụ gỡ chính thức tải trực tiếp cho AV này.";
+                txtDirectory.Text = Loc.Pick("Chưa có công cụ gỡ chính thức tải trực tiếp cho AV này.", "No direct official removal tool for this AV yet.");
                 btndownload.Enabled = false;
                 btnavcheck.Enabled = true;
                 return;
@@ -475,10 +479,10 @@ namespace frmavfinnder
                 _state.LastResultAv.Equals(_targetEntry.Name, StringComparison.OrdinalIgnoreCase))
             {
                 lblavstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
-                lblavstatus.Text = "Đã xử lý:";
-                txtDirectory.Text =
-                    $"{_targetEntry.Name} đã được gỡ ở lần chạy trước. Nếu entry còn hiển thị, " +
-                    "hãy khởi động lại máy. Bấm DOWNLOAD nếu muốn chạy lại thủ công.";
+                lblavstatus.Text = Loc.Pick("Đã xử lý:", "Handled:");
+                txtDirectory.Text = Loc.Pick(
+                    $"{_targetEntry.Name} đã được gỡ ở lần chạy trước. Nếu entry còn hiển thị, hãy khởi động lại máy. Bấm DOWNLOAD nếu muốn chạy lại thủ công.",
+                    $"{_targetEntry.Name} was removed in a previous run. If the entry still shows, please reboot. Click DOWNLOAD to run it again manually.");
                 btnavcheck.Enabled = true;
                 return;
             }
@@ -490,10 +494,10 @@ namespace frmavfinnder
                 _state.TargetAv.Equals(_targetEntry.Name, StringComparison.OrdinalIgnoreCase))
             {
                 var choice = MessageBox.Show(
-                    $"Đã có công cụ gỡ {_targetEntry.Name} tải trước đó (đã xác minh chữ ký):\n" +
-                    $"{_state.DownloadedFile}\n\nDùng lại file này?\n\n" +
-                    "[Yes] Chạy file đã có   •   [No] Tải lại mới   •   [Cancel] Không làm gì",
-                    "File đã tồn tại", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                    Loc.Pick(
+                        $"Đã có công cụ gỡ {_targetEntry.Name} tải trước đó (đã xác minh):\n{_state.DownloadedFile}\n\nDùng lại file này?\n\n[Yes] Chạy file đã có   •   [No] Tải lại mới   •   [Cancel] Không làm gì",
+                        $"A {_targetEntry.Name} remover was already downloaded (verified):\n{_state.DownloadedFile}\n\nReuse this file?\n\n[Yes] Run existing   •   [No] Download again   •   [Cancel] Do nothing"),
+                    Loc.Pick("File đã tồn tại", "File exists"), MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
 
                 if (choice == DialogResult.Yes)
                 {
@@ -512,19 +516,21 @@ namespace frmavfinnder
             // Feature round3 #7: policy có thể tắt auto-run → chỉ bật nút, chờ người dùng.
             if (Policy.Current.DisableAutoRun)
             {
-                txtDirectory.Text = _targetEntry.Url + "  (bấm DOWNLOAD để tải — auto-run bị tắt bởi policy)";
+                txtDirectory.Text = _targetEntry.Url + Loc.Pick("  (bấm DOWNLOAD để tải — auto-run bị tắt bởi policy)", "  (click DOWNLOAD — auto-run disabled by policy)");
                 btnavcheck.Enabled = true;
                 return;
             }
 
             // Hỏi xác nhận trước khi tải (Feature #2: không còn thao tác bất ngờ).
+            string safeNote = _targetEntry.RequiresSafeMode
+                ? Loc.Pick("\n⚠️ AV này cần khởi động vào Safe Mode để gỡ sạch. Máy sẽ cần restart.",
+                           "\n⚠️ This AV needs a Safe Mode reboot for a clean removal. The PC will restart.")
+                : "";
             var confirm = MessageBox.Show(
-                $"Phát hiện: {detectedAvName}\n\n" +
-                $"Tải công cụ gỡ chính thức ({_targetEntry.Name}) và chạy nó?\n" +
-                (_targetEntry.RequiresSafeMode
-                    ? "\n⚠️ AV này cần khởi động vào Safe Mode để gỡ sạch. Máy sẽ cần restart."
-                    : ""),
-                "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                Loc.Pick(
+                    $"Phát hiện: {detectedAvName}\n\nTải công cụ gỡ chính thức ({_targetEntry.Name}) và chạy nó?\n" + safeNote,
+                    $"Detected: {detectedAvName}\n\nDownload the official removal tool ({_targetEntry.Name}) and run it?\n" + safeNote),
+                Loc.Pick("Xác nhận", "Confirm"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (confirm != DialogResult.Yes)
             {
@@ -613,16 +619,16 @@ namespace frmavfinnder
             if (isWin7)
             {
                 lblavstatus.ForeColor = System.Drawing.Color.FromArgb(200, 0, 0);
-                lblavstatus.Text = "⚠️ Not Protected:";
-                txtfoundav.Text = "Windows 7 - No antivirus found";
-                txtDirectory.Text = "Recommend: Use a lightweight AV (Avast/AVG) or update to Windows 10";
+                lblavstatus.Text = Loc.Pick("⚠️ Không được bảo vệ:", "⚠️ Not Protected:");
+                txtfoundav.Text = Loc.Pick("Windows 7 - Không tìm thấy antivirus", "Windows 7 - No antivirus found");
+                txtDirectory.Text = Loc.Pick("Khuyến nghị: dùng AV nhẹ (Avast/AVG) hoặc nâng cấp Windows 10", "Recommend: Use a lightweight AV (Avast/AVG) or update to Windows 10");
             }
             else
             {
                 lblavstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
-                lblavstatus.Text = "Protected:";
-                txtfoundav.Text = "Windows Defender is active";
-                txtDirectory.Text = "System is protected by Windows Defender";
+                lblavstatus.Text = Loc.Pick("Được bảo vệ:", "Protected:");
+                txtfoundav.Text = Loc.Pick("Windows Defender đang hoạt động", "Windows Defender is active");
+                txtDirectory.Text = Loc.Pick("Hệ thống được bảo vệ bởi Windows Defender", "System is protected by Windows Defender");
             }
             btndownload.Enabled = false;
         }
@@ -735,10 +741,32 @@ namespace frmavfinnder
             }
 
             bool isExe = _finalPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+            bool verified = false;
 
-            // Fix H1: xác minh chữ ký số trước khi chạy exe.
-            if (isExe)
+            if (!string.IsNullOrEmpty(_targetEntry.Sha256))
             {
+                // Tool tự phát hành (BKAV/CMC) không ký số → chốt bằng SHA256.
+                lblstatus.Text = "Verifying SHA256...";
+                string actual = SignatureVerifier.Sha256(_partPath);
+                Log.Write($"SHA256 {_targetEntry.Name}: expected={_targetEntry.Sha256} actual={actual}");
+                if (actual == null || !actual.Equals(_targetEntry.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    lblstatus.Text = "❌ SHA256 không khớp!";
+                    TryDeletePart();
+                    MessageBox.Show(
+                        Loc.Pick(
+                            $"KHÔNG dùng file vì SHA256 không khớp giá trị đã ghim trong danh mục.\n\nKỳ vọng: {_targetEntry.Sha256}\nThực tế:  {actual ?? "(lỗi đọc)"}",
+                            $"NOT using the file: SHA256 does not match the pinned value.\n\nExpected: {_targetEntry.Sha256}\nActual:   {actual ?? "(read error)"}"),
+                        Loc.Pick("Xác minh hash thất bại", "Hash Verification Failed"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    btndownload.Enabled = true;
+                    return;
+                }
+                verified = true;
+                lblstatus.Text = "✓ Verified (SHA256)";
+            }
+            else if (isExe)
+            {
+                // Fix H1: xác minh chữ ký số trước khi chạy exe.
                 lblstatus.Text = "Verifying signature...";
                 var verify = SignatureVerifier.Verify(_partPath, _targetEntry.ExpectedSigner);
                 Log.Write($"Verify {_targetEntry.Name}: trusted={verify.IsTrusted} signer={verify.SignerSubject} msg={verify.Message}");
@@ -748,13 +776,15 @@ namespace frmavfinnder
                     lblstatus.Text = "❌ Signature check failed!";
                     TryDeletePart();
                     MessageBox.Show(
-                        $"KHÔNG chạy file vì xác minh chữ ký thất bại:\n\n{verify.Message}\n\n" +
-                        "Vì file sẽ chạy với quyền Admin, tool từ chối chạy file không rõ nguồn gốc.",
-                        "Signature Verification Failed",
+                        Loc.Pick(
+                            $"KHÔNG chạy file vì xác minh chữ ký thất bại:\n\n{verify.Message}\n\nVì file sẽ chạy với quyền Admin, tool từ chối chạy file không rõ nguồn gốc.",
+                            $"NOT running the file: signature verification failed:\n\n{verify.Message}\n\nSince it would run as Admin, the tool refuses files of unknown origin."),
+                        Loc.Pick("Xác minh chữ ký thất bại", "Signature Verification Failed"),
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     btndownload.Enabled = true;
                     return;
                 }
+                verified = true;
                 lblstatus.Text = $"✓ Verified: {verify.SignerSubject}";
             }
 
@@ -775,7 +805,7 @@ namespace frmavfinnder
 
             _state.TargetAv = _targetEntry.Name;
             _state.DownloadedFile = _finalPath;
-            _state.DownloadVerified = isExe;
+            _state.DownloadVerified = verified;
             _state.Phase = "downloaded";
             _state.Save();
 
@@ -804,9 +834,10 @@ namespace frmavfinnder
                 if (!isExe)
                 {
                     MessageBox.Show(
-                        $"File đã tải về nhưng không thể tự chạy (không phải .exe):\n{_finalPath}\n\n" +
-                        "Vui lòng giải nén/chạy thủ công.",
-                        "Manual Action Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        Loc.Pick(
+                            $"File đã tải về nhưng không thể tự chạy (không phải .exe):\n{_finalPath}\n\nVui lòng giải nén/chạy thủ công.",
+                            $"Downloaded but cannot auto-run (not an .exe):\n{_finalPath}\n\nPlease extract/run it manually."),
+                        Loc.Pick("Cần thao tác thủ công", "Manual Action Required"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     Process.Start("explorer.exe", $"/select,\"{_finalPath}\"");
                     btndownload.Enabled = true;
                     btnavcheck.Enabled = true;
@@ -855,8 +886,9 @@ namespace frmavfinnder
 
                 // AV thường → xác nhận lần cuối rồi chạy.
                 var confirm = MessageBox.Show(
-                    $"Chạy công cụ gỡ {_targetEntry?.Name} ngay bây giờ?\n({_finalPath})",
-                    "Xác nhận chạy", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    Loc.Pick($"Chạy công cụ gỡ {_targetEntry?.Name} ngay bây giờ?\n({_finalPath})",
+                             $"Run the {_targetEntry?.Name} remover now?\n({_finalPath})"),
+                    Loc.Pick("Xác nhận chạy", "Confirm run"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
                 if (confirm != DialogResult.Yes)
                 {

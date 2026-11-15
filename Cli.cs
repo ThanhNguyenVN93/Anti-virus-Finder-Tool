@@ -217,7 +217,18 @@ namespace frmavfinnder
                 }
 
                 bool isExe = finalPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
-                if (isExe)
+                if (!string.IsNullOrEmpty(entry.Sha256))
+                {
+                    string actual = SignatureVerifier.Sha256(partPath);
+                    if (actual == null || !actual.Equals(entry.Sha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Print($"silent: SHA256 mismatch (expected {entry.Sha256}, got {actual ?? "err"})");
+                        try { File.Delete(partPath); } catch { }
+                        return 6;
+                    }
+                    Print("silent: SHA256 verified");
+                }
+                else if (isExe)
                 {
                     var v = SignatureVerifier.Verify(partPath, entry.ExpectedSigner);
                     if (!v.IsTrusted)
