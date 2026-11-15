@@ -4,83 +4,84 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
+
 namespace frmavfinnder
 {
     public partial class Form2 : Form
     {
-        private string _uninstallerPath;
+        private readonly string _uninstallerPath;
+        private readonly string _avName;
+        private readonly AppState _state;
 
-        public Form2(string uninstallerPath)
+        // Đếm ngược reboot (Feature #2).
+        private Timer _countdownTimer;
+        private int _countdownRemaining;
+        private Action _countdownAction;
+        private Button _btnCancelReboot;
+
+        public Form2(string uninstallerPath, string avName, AppState state)
         {
             InitializeComponent();
             _uninstallerPath = uninstallerPath;
+            _avName = avName ?? "";
+            _state = state ?? AppState.Load();
+            SetupCancelButton();
         }
 
-        // ────────────────────────────────────────────────────
-        //  FORM LOAD
-        // ────────────────────────────────────────────────────
+        // Thêm nút HỦY bằng code (không đụng Designer) cho phần đếm ngược reboot.
+        private void SetupCancelButton()
+        {
+            _btnCancelReboot = new Button
+            {
+                Text = "HỦY REBOOT",
+                Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold),
+                Size = new System.Drawing.Size(130, 34),
+                Location = new System.Drawing.Point(345, 205),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = System.Drawing.Color.FromArgb(200, 60, 60),
+                ForeColor = System.Drawing.Color.White,
+                Cursor = Cursors.Hand,
+                Visible = false
+            };
+            _btnCancelReboot.FlatAppearance.BorderSize = 0;
+            _btnCancelReboot.Click += (s, e) => CancelCountdown();
+            this.Controls.Add(_btnCancelReboot);
+            _btnCancelReboot.BringToFront();
+        }
+
         private void Form2_Load(object sender, EventArgs e)
         {
             lblstatus.Text = "Checking Safe Mode status...";
             lbldetails.Text = "Initializing system...";
             lblstep.Text = "";
 
-            if (IsInSafeMode())
+            if (SafeBoot.IsInSafeMode)
             {
                 lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
                 lblstatus.Text = "✓ Currently in Safe Mode";
                 lblmode.Text = "Safe Mode Minimal detected";
                 lbldetails.Text = "Ready to run uninstaller";
                 lblstep.Text = "Step 1/2: Running uninstaller...";
-
-                // Đã trong Safe Mode → chạy uninstaller ngay
                 RunUninstaller();
             }
             else
             {
                 lblstatus.ForeColor = System.Drawing.Color.FromArgb(200, 120, 0);
                 lblstatus.Text = "⚠️ Not in Safe Mode";
-                lblmode.Text = "Rebooting into Safe Mode Minimal...";
-                lbldetails.Text = "This will restart your computer";
-                lblstep.Text = "Step 1/3: Configuring Safe Mode...";
-
-                // Chưa trong Safe Mode → boot vào Safe Mode ngay
+                lblmode.Text = "Need to reboot into Safe Mode Minimal";
+                lbldetails.Text = $"AV cần gỡ: {_avName}";
+                lblstep.Text = "Chuẩn bị cấu hình Safe Mode...";
                 BootIntoSafeMode();
             }
         }
 
         // ────────────────────────────────────────────────────
-        //  KIỂM TRA SAFE MODE
-        // ────────────────────────────────────────────────────
-        private bool IsInSafeMode()
-        {
-            // Cách đáng tin cậy nhất: dùng SystemInformation.BootMode
-            return System.Windows.Forms.SystemInformation.BootMode != BootMode.Normal;
-        }
-
-        // ────────────────────────────────────────────────────
-        //  THƯ MỤC SYSTEM32 THỰC (tránh WoW64 File System Redirection)
-        // ────────────────────────────────────────────────────
-        private string GetSystemDirectory()
-        {
-            // Redirection chỉ xảy ra khi process 32-bit chạy trên OS 64-bit.
-            // Nếu bản thân OS là 32-bit thì không có Sysnative, phải dùng System32 như cũ.
-            bool isWow64 = !Environment.Is64BitProcess && Environment.Is64BitOperatingSystem;
-
-            return isWow64
-                ? Path.Combine(Environment.GetEnvironmentVariable("windir"), "Sysnative")
-                : Environment.GetFolderPath(Environment.SpecialFolder.System);
-        }
-
-        // ────────────────────────────────────────────────────
-        //  ĐĂNG KÝ TỰ CHẠY LẠI SAU KHI REBOOT VÀO SAFE MODE
+        //  ĐĂNG KÝ TỰ CHẠY LẠI SAU KHI VÀO SAFE MODE
         // ────────────────────────────────────────────────────
         private void RegisterSafeModeAutoRelaunch()
         {
             try
             {
-                // Tiền tố "*" là yêu cầu bắt buộc của Windows để RunOnce/Run
-                // được thực thi ngay cả khi máy boot vào Safe Mode.
                 using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
                     @"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", writable: true))
                 {
@@ -90,94 +91,22 @@ namespace frmavfinnder
             }
             catch (Exception ex)
             {
+                Log.Write($"RegisterSafeModeAutoRelaunch failed: {ex.Message}");
                 MessageBox.Show(
-                    $"Không thể đăng ký tự khởi động lại trong Safe Mode: {ex.Message}\n\nSau khi khởi động lại, vui lòng tự mở lại ứng dụng.",
+                    $"Không thể đăng ký tự khởi động lại trong Safe Mode: {ex.Message}\n\n" +
+                    "Sau khi khởi động lại, vui lòng tự mở lại ứng dụng.",
                     "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
         // ────────────────────────────────────────────────────
-        //  BOOT VÀO SAFE MODE MINIMAL
+        //  CẤU HÌNH + REBOOT VÀO SAFE MODE
         // ────────────────────────────────────────────────────
         private void BootIntoSafeMode()
         {
             try
             {
-                lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 120, 215);
-                lblstatus.Text = "Configuring...";
-                lblmode.Text = "Setting Safe Mode boot configuration";
-                lbldetails.Text = "Executing bcdedit command...";
-                lblstep.Text = "Step 2/3: Executing bcdedit...";
-
-                string sysDir = GetSystemDirectory();
-                string bcdeditPath = Path.Combine(sysDir, "bcdedit.exe");
-                string shutdownPath = Path.Combine(sysDir, "shutdown.exe");
-
-                if (!File.Exists(bcdeditPath) || !File.Exists(shutdownPath))
-                {
-                    MessageBox.Show(
-                        $"Không tìm thấy bcdedit.exe / shutdown.exe tại:\n{sysDir}",
-                        "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                // Bước 1: Set safeboot minimal
-                ProcessStartInfo bcdeditPsi = new ProcessStartInfo(bcdeditPath)
-                {
-                    Arguments = "/set {current} safeboot minimal",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                string errorOutput;
-                int exitCode;
-                using (var proc = Process.Start(bcdeditPsi))
-                {
-                    errorOutput = proc.StandardError.ReadToEnd();
-                    proc.WaitForExit();
-                    exitCode = proc.ExitCode;
-                }
-
-                if (exitCode != 0)
-                {
-                    MessageBox.Show(
-                        $"bcdedit failed (exit code {exitCode}).\n{errorOutput}",
-                        "bcdedit Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                // Đăng ký app tự chạy lại sau khi reboot vào Safe Mode.
-                // Registry Run/RunOnce bình thường KHÔNG được Windows thực thi trong
-                // Safe Mode — chỉ chạy nếu tên value có tiền tố "*" (hành vi được
-                // Windows tài liệu hoá riêng cho trường hợp Safe Mode).
-                RegisterSafeModeAutoRelaunch();
-
-                // Bước 2: bcdedit đã ghi xong → restart ngay
-                lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
-                lblstatus.Text = "✓ Configuration Complete";
-                lblmode.Text = "System restarting now";
-                lbldetails.Text = "Please wait while your computer restarts...";
-                lblstep.Text = "Step 3/3: Restarting system...";
-
-                Process.Start(shutdownPath, "/r /t 0");
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error: {ex.Message}\n\nPlease restart manually into Safe Mode.",
-                    "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                this.Close();
-            }
-        }
-
-        // ────────────────────────────────────────────────────
-        //  CHẠY UNINSTALLER
-        // ────────────────────────────────────────────────────
-        private async void RunUninstaller()
-        {
-            try
-            {
+                // Xác nhận file hợp lệ trước khi đụng tới cấu hình boot.
                 if (!File.Exists(_uninstallerPath))
                 {
                     MessageBox.Show($"Uninstaller not found: {_uninstallerPath}",
@@ -187,19 +116,140 @@ namespace frmavfinnder
                 }
 
                 lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 120, 215);
+                lblstatus.Text = "Configuring...";
+                lblmode.Text = "Setting Safe Mode boot configuration";
+                lbldetails.Text = "Executing bcdedit command...";
+                lblstep.Text = "Đang chạy bcdedit...";
+
+                if (!File.Exists(SafeBoot.BcdeditPath) || !File.Exists(SafeBoot.ShutdownPath))
+                {
+                    MessageBox.Show(
+                        $"Không tìm thấy bcdedit.exe / shutdown.exe tại:\n{SafeBoot.GetSystemDirectory()}",
+                        "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    this.Close();
+                    return;
+                }
+
+                int exitCode = SafeBoot.RunBcdedit("/set {current} safeboot minimal", out string err);
+                if (exitCode != 0)
+                {
+                    MessageBox.Show(
+                        $"bcdedit failed (exit code {exitCode}).\n{err}",
+                        "bcdedit Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    this.Close();
+                    return;
+                }
+
+                RegisterSafeModeAutoRelaunch();
+
+                // Feature round3 #1: lưới an toàn — nếu app không tự dọn được,
+                // task này sẽ xóa cờ + reboot sau 20 phút.
+                Watchdog.Arm(20);
+
+                lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
+                lblstatus.Text = "✓ Configuration Complete";
+                lblmode.Text = "System will restart into Safe Mode";
+
+                // Feature #2: đếm ngược + cho hủy. Nếu hủy thì rollback cờ safeboot.
+                StartCountdown(10, "khởi động lại vào Safe Mode",
+                    onFire: () => SafeBoot.Restart(),
+                    onCancel: () =>
+                    {
+                        SafeBoot.ClearSafeBootFlag();   // rollback để không bị kẹt
+                        _state.Reset();
+                        lblstatus.ForeColor = System.Drawing.Color.FromArgb(200, 120, 0);
+                        lblstatus.Text = "Đã hủy";
+                        lblmode.Text = "Đã rollback cấu hình Safe Mode";
+                        lbldetails.Text = "Không có thay đổi nào với hệ thống.";
+                        lblstep.Text = "";
+                    });
+            }
+            catch (Exception ex)
+            {
+                Log.Write($"BootIntoSafeMode error: {ex.Message}");
+                // Nếu đã lỡ set safeboot thì cố xóa để không kẹt.
+                SafeBoot.ClearSafeBootFlag();
+                MessageBox.Show($"Error: {ex.Message}\n\nĐã cố khôi phục cấu hình boot.",
+                    "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
+            }
+        }
+
+        // ────────────────────────────────────────────────────
+        //  CHẠY UNINSTALLER (đang ở Safe Mode)
+        // ────────────────────────────────────────────────────
+        private async void RunUninstaller()
+        {
+            try
+            {
+                // Fix C2: trong Safe Mode, bất kỳ lỗi nào cũng phải xóa safeboot
+                // trước khi thoát, nếu không máy kẹt ở Safe Mode.
+                if (!File.Exists(_uninstallerPath))
+                {
+                    FailInSafeMode($"Uninstaller not found: {_uninstallerPath}");
+                    return;
+                }
+
+                // Xác minh chữ ký lần nữa (phòng file bị tráo giữa 2 lần boot) — H1.
+                if (_uninstallerPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    var verify = SignatureVerifier.Verify(_uninstallerPath, null);
+                    if (!verify.IsTrusted)
+                    {
+                        FailInSafeMode($"Xác minh chữ ký uninstaller thất bại: {verify.Message}");
+                        return;
+                    }
+                }
+
+                lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 120, 215);
                 lblstatus.Text = "Launching uninstaller...";
                 lblmode.Text = $"Running: {Path.GetFileName(_uninstallerPath)}";
                 lbldetails.Text = "Please wait while the uninstaller completes...";
 
-                // Chạy uninstaller và đợi nó kết thúc
                 Process uninstallerProc = Process.Start(_uninstallerPath);
 
-                // Process.Start trả null nếu UseShellExecute tái sử dụng 1 tiến trình
-                // đã chạy sẵn thay vì tạo mới — không có gì để WaitForExit trong trường hợp đó.
+                int exitCode = 0;
                 if (uninstallerProc != null)
                 {
-                    // Đợi uninstaller thoát trên background thread để UI không đơ
-                    await Task.Run(() => uninstallerProc.WaitForExit());
+                    // Feature round3 #5: timeout để uninstaller treo không làm kẹt vĩnh viễn.
+                    const int timeoutMs = 10 * 60 * 1000; // 10 phút
+                    bool exited = await Task.Run(() => uninstallerProc.WaitForExit(timeoutMs));
+                    while (!exited)
+                    {
+                        var keep = MessageBox.Show(
+                            "Uninstaller đã chạy hơn 10 phút và chưa kết thúc.\n\n" +
+                            "[Yes] Chờ thêm   •   [No] Dừng chờ và dọn cấu hình Safe Mode",
+                            "Uninstaller chạy lâu", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        if (keep == DialogResult.Yes)
+                        {
+                            exited = await Task.Run(() => uninstallerProc.WaitForExit(timeoutMs));
+                        }
+                        else
+                        {
+                            FailInSafeMode("Người dùng dừng chờ uninstaller (chạy quá lâu).");
+                            return;
+                        }
+                    }
+                    exitCode = uninstallerProc.ExitCode;
+                    Log.Write($"Uninstaller exit code: {exitCode}");
+                }
+
+                // Fix H2: báo đúng kết quả theo exit code, không mặc định "thành công".
+                if (uninstallerProc != null && exitCode != 0)
+                {
+                    var choice = MessageBox.Show(
+                        $"Uninstaller kết thúc với mã lỗi {exitCode} (có thể chưa gỡ xong hoặc bị hủy).\n\n" +
+                        "Vẫn xóa cấu hình Safe Mode và khởi động về Normal Mode?",
+                        "Uninstaller Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                    if (choice != DialogResult.Yes)
+                    {
+                        // Người dùng muốn thử lại → không xóa safeboot, giữ nguyên để chạy lại.
+                        lblstatus.Text = "Đang chờ thao tác thủ công trong Safe Mode";
+                        lbldetails.Text = "Cấu hình Safe Mode vẫn giữ. Đóng app khi xong để tự xóa cờ.";
+                        return;
+                    }
+                    // else rơi xuống dọn dẹp bên dưới.
                 }
 
                 lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
@@ -208,78 +258,157 @@ namespace frmavfinnder
                 lbldetails.Text = "Removing Safe Mode configuration...";
                 lblstep.Text = "Step 2/2: Cleaning up...";
 
-                // Xóa safeboot flag khỏi BCD → lần restart tiếp sẽ vào Normal Mode
+                // Ghi nhận đã xử lý xong AV này.
+                _state.LastResultAv = _avName;
+                _state.Phase = "completed";
+                _state.DownloadVerified = false;
+                _state.DownloadedFile = "";
+                _state.Save();
+
                 BootBackToNormal();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error running uninstaller: {ex.Message}",
+                Log.Write($"RunUninstaller error: {ex.Message}");
+                FailInSafeMode($"Error running uninstaller: {ex.Message}");
+            }
+        }
+
+        // Dọn an toàn khi gặp lỗi trong Safe Mode: xóa cờ để không kẹt.
+        private void FailInSafeMode(string reason)
+        {
+            Log.Write($"FailInSafeMode: {reason}");
+            bool cleared = SafeBoot.ClearSafeBootFlag();
+            MessageBox.Show(
+                $"{reason}\n\n" +
+                (cleared
+                    ? "Đã xóa cấu hình Safe Mode. Vui lòng khởi động lại về Normal Mode."
+                    : "Không tự xóa được cấu hình Safe Mode. Hãy chạy thủ công:\nbcdedit /deletevalue {current} safeboot\nrồi khởi động lại."),
+                "Safe Mode Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            this.Close();
+        }
+
+        // ────────────────────────────────────────────────────
+        //  XÓA SAFEBOOT + REBOOT VỀ NORMAL
+        // ────────────────────────────────────────────────────
+        private void BootBackToNormal()
+        {
+            try
+            {
+                lbldetails.Text = "Executing bcdedit delete command...";
+                lblstep.Text = "Removing Safe Mode flag...";
+
+                int exitCode = SafeBoot.RunBcdedit("/deletevalue {current} safeboot", out string err);
+                Watchdog.Disarm();   // đã dọn xong → gỡ lưới an toàn
+                if (exitCode != 0)
+                {
+                    Log.Write($"BootBackToNormal: delete failed {exitCode} {err}");
+                    MessageBox.Show(
+                        "Could not remove Safe Mode boot flag.\nAfter restart, manually run:\n" +
+                        "bcdedit /deletevalue {current} safeboot",
+                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+
+                lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
+                lblstatus.Text = "✓ Success!";
+                lblmode.Text = $"{_avName} removed";
+                lbldetails.Text = "Restarting to Normal Mode...";
+                lblstep.Text = "✓ All steps completed!";
+                lblstep.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
+                progressBar1.Style = ProgressBarStyle.Continuous;
+                progressBar1.Value = 100;
+
+                StartCountdown(10, "khởi động lại về Normal Mode",
+                    onFire: () => SafeBoot.Restart(),
+                    onCancel: () =>
+                    {
+                        lblmode.Text = "Đã hủy tự restart.";
+                        lbldetails.Text = "Cờ Safe Mode đã được xóa. Hãy tự khởi động lại khi sẵn sàng.";
+                        lblstep.Text = "";
+                    });
+            }
+            catch (Exception ex)
+            {
+                Log.Write($"BootBackToNormal error: {ex.Message}");
+                MessageBox.Show(
+                    $"Error: {ex.Message}\n\nPlease manually run:\n" +
+                    "bcdedit /deletevalue {current} safeboot\nThen restart your PC.",
                     "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 this.Close();
             }
         }
 
         // ────────────────────────────────────────────────────
-        //  XÓA SAFEBOOT FLAG VÀ RESTART VỀ NORMAL MODE
+        //  ĐẾM NGƯỢC REBOOT CÓ NÚT HỦY (Feature #2)
         // ────────────────────────────────────────────────────
-        private void BootBackToNormal()
+        private void StartCountdown(int seconds, string whatHappens, Action onFire, Action onCancel)
         {
+            _countdownRemaining = seconds;
+            _countdownAction = onFire;
+
+            _btnCancelReboot.Visible = true;
+            _btnCancelReboot.BringToFront();
+
+            _countdownTimer?.Stop();
+            _countdownTimer?.Dispose();
+            _countdownTimer = new Timer { Interval = 1000 };
+
+            Action pendingCancel = onCancel;
+
+            UpdateCountdownLabel(whatHappens);
+
+            _countdownTimer.Tick += (s, e) =>
+            {
+                _countdownRemaining--;
+                if (_countdownRemaining <= 0)
+                {
+                    _countdownTimer.Stop();
+                    _btnCancelReboot.Visible = false;
+                    _countdownAction?.Invoke();
+                }
+                else
+                {
+                    UpdateCountdownLabel(whatHappens);
+                }
+            };
+
+            // Lưu lại hành động hủy để nút dùng.
+            _cancelHandler = () =>
+            {
+                _countdownTimer?.Stop();
+                _btnCancelReboot.Visible = false;
+                pendingCancel?.Invoke();
+            };
+
+            _countdownTimer.Start();
+        }
+
+        private Action _cancelHandler;
+
+        private void CancelCountdown()
+        {
+            _cancelHandler?.Invoke();
+        }
+
+        private void UpdateCountdownLabel(string whatHappens)
+        {
+            lblstep.Text = $"Sẽ {whatHappens} sau {_countdownRemaining}s... (bấm HỦY để dừng)";
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // Nếu đóng app khi đang ở Safe Mode mà cờ còn → xóa để không kẹt.
             try
             {
-                string sysDir = GetSystemDirectory();
-                string bcdeditPath = Path.Combine(sysDir, "bcdedit.exe");
-                string shutdownPath = Path.Combine(sysDir, "shutdown.exe");
-
-                lbldetails.Text = "Executing bcdedit delete command...";
-                lblstep.Text = "Final: Removing Safe Mode flag...";
-
-                // Xóa safeboot khỏi BCD → boot tiếp sẽ vào Normal Mode
-                ProcessStartInfo bcdeditPsi = new ProcessStartInfo(bcdeditPath)
+                _countdownTimer?.Stop();
+                if (SafeBoot.IsInSafeMode)
                 {
-                    Arguments = "/deletevalue {current} safeboot",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                int exitCode;
-                using (var proc = Process.Start(bcdeditPsi))
-                {
-                    proc.StandardError.ReadToEnd();
-                    proc.WaitForExit();
-                    exitCode = proc.ExitCode;
+                    SafeBoot.ClearSafeBootFlag();
+                    Log.Write("Form2 closing in Safe Mode — cleared safeboot flag as precaution.");
                 }
-
-                if (exitCode != 0)
-                {
-                    MessageBox.Show(
-                        "Could not remove Safe Mode boot flag.\nAfter restart, manually run:\nbcdedit /deletevalue {current} safeboot",
-                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-
-                lblstatus.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
-                lblstatus.Text = "✓ Success!";
-                lblmode.Text = "Antivirus removed successfully";
-                lbldetails.Text = "Restarting to Normal Mode...";
-                lblstep.Text = "✓ All steps completed!";
-                lblstep.ForeColor = System.Drawing.Color.FromArgb(0, 150, 50);
-                progressBar1.Style = System.Windows.Forms.ProgressBarStyle.Continuous;
-                progressBar1.Value = 100;
-
-                MessageBox.Show(
-                    "Antivirus has been uninstalled!\n\nSystem will restart into Normal Mode.",
-                    "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                // Restart về Normal Mode
-                Process.Start(shutdownPath, "/r /t 0");
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error: {ex.Message}\n\nPlease manually run:\nbcdedit /deletevalue {{current}} safeboot\nThen restart your PC.",
-                    "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                this.Close();
-            }
+            catch { }
+            base.OnFormClosing(e);
         }
     }
 }

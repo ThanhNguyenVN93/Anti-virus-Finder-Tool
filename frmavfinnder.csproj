@@ -44,6 +44,7 @@
     </Reference>
     <Reference Include="System.Core" />
     <Reference Include="System.Management" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -55,6 +56,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AppInfrastructure.cs" />
+    <Compile Include="AppState.cs" />
+    <Compile Include="AvCatalog.cs" />
+    <Compile Include="SafeBoot.cs" />
+    <Compile Include="SystemHelpers.cs" />
+    <Compile Include="Detection.cs" />
+    <Compile Include="Security.cs" />
+    <Compile Include="Downloader.cs" />
+    <Compile Include="Watchdog.cs" />
+    <Compile Include="Policy.cs" />
+    <Compile Include="Cleanup.cs" />
+    <Compile Include="UpdateCheck.cs" />
+    <Compile Include="Localization.cs" />
+    <Compile Include="Cli.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>

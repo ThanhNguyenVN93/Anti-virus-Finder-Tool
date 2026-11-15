@@ -270,7 +270,7 @@
             this.MinimumSize = new System.Drawing.Size(466, 635);
             this.Name = "Form1";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "ANTI-VIRUS FINDER TOOL V1.1";
+            this.Text = "ANTI-VIRUS FINDER TOOL V1.2";
             this.Load += new System.EventHandler(this.Form1_Load);
             this.BackColor = System.Drawing.Color.FromArgb(240, 245, 250);
             this.groupBox1.ResumeLayout(false);
